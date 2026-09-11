@@ -693,6 +693,11 @@ def apply_edits(save_file, item_keys: list) -> list:
 
 def run_bcsfe_download(transfer_code: str, confirmation_code: str, cc_str: str):
     from bcsfe import core
+
+    import types
+    core.core_data.local_manager = types.SimpleNamespace(get_key=lambda s,k,**kw:k)
+    core.core_data.theme_manager = types.SimpleNamespace(get_color=lambda s,n:"")
+    core.core_data.config = {}
     core.core_data.init_data()
     cc_map = {"jp": "jp", "en": "en", "tw": "tw", "kr": "kr"}
     cc = core.CountryCode(cc_map.get(cc_str.lower(), "jp"))
