@@ -3,13 +3,16 @@ os.environ["BCSFE_CONFIG_HOME"] = "/tmp/bcsfe_config"
 import discord
 import tempfile
 from discord import app_commands, ui, Embed, Color, ButtonStyle
-from discord import app_commands, ui, Embed, Color, ButtonStyle
 from discord.ext import commands
-import os
 import json
 import logging
 from datetime import datetime, timedelta, timezone
-
+import bcsfe
+import bcsfe.core
+if not hasattr(bcsfe.core.core_data, 'local_manager'):
+    bcsfe.core.core_data.local_manager = type('obj', (object,), {
+        'get_key': lambda self, k, **kw: k
+    })()
 # ======================================================
 # ✅ 設定
 # ======================================================
