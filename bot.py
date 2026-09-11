@@ -5,6 +5,7 @@ import os
 import json
 import logging
 from datetime import datetime, timedelta, timezone
+
 # ======================================================
 # ✅ 設定
 # ======================================================
@@ -16,7 +17,6 @@ SETTINGS_FILE = "settings.json"
 PRICE_FILE = "price_overrides.json"
 PAYPAY_AVAILABLE = False
 JST = timezone(timedelta(hours=9))
-
 CLONE_PRICE_DEFAULT    = 500
 FULL_EDIT_PRICE_DEFAULT = 300
 RECOVERY_PRICE_DEFAULT  = 300
@@ -49,39 +49,39 @@ ITEM_CONFIG = {
     "legend_29":            {"label": "レジェンドチケット +29枚",   "price": 400},
     "platinum_shard_90":    {"label": "プラチナのかけら +90個",    "price": 200},
     "leadership_999":       {"label": "統率力 999",                "price": 100},
-    "battle_items_999":     {"label": "アイテム各999個",            "price": 150},
-    "matatabi_998":         {"label": "ネコみかん 998個",           "price": 150},
-    "cats_eye_999":         {"label": "ネコのめ 999個",            "price": 150},
-    "nekovitan_999":        {"label": "ネコビタン 999個",           "price": 150},
-    "castle_parts_999":     {"label": "城素材各999個",              "price": 200},
-    "event_ticket_999":     {"label": "イベントチケット各999",      "price": 200},
-    "honnou_99":            {"label": "本能玉 全属性Lv99",          "price": 300},
-    "dungeon_medal_99":     {"label": "ダンジョンメダル 99枚",      "price": 150},
-    "main_clear":           {"label": "第1章～第3章 全クリア",       "price": 300},
-    "zombie_clear":         {"label": "ゾンビ襲来 全クリア",         "price": 200},
-    "old_legend_clear":     {"label": "旧レジェンド 全クリア",       "price": 300},
-    "true_legend_clear":    {"label": "真レジェンド 全クリア",       "price": 500},
-    "zero_legend_clear":    {"label": "零レジェンド 全クリア",       "price": 500},
-    "makai_clear":          {"label": "魔界編 全クリア",             "price": 300},
-    "event_clear":          {"label": "イベントステージ全クリア",    "price": 400},
-    "all_char_unlock":      {"label": "全キャラ開放",               "price": 500},
-    "error_char_delete":    {"label": "エラーキャラ削除",           "price": 0},
-    "all_char_lv_max":      {"label": "所持キャラ全員LvMAX",         "price": 500},
-    "all_char_max_form":    {"label": "所持キャラ最高形態",          "price": 500},
-    "all_honnou_max":       {"label": "全キャラ本能解放LvMAX",       "price": 800},
-    "telop_delete":         {"label": "開放テロップ削除",           "price": 0},
-    "slot_max":             {"label": "編成スロット数最大拡張",     "price": 50},
-    "medal_all":            {"label": "にゃんこメダル全開放",       "price": 100},
-    "enemy_book_all":       {"label": "敵キャラ図鑑全開放",         "price": 100},
-    "user_rank_all":        {"label": "ユーザーランク報酬全受取",   "price": 50},
-    "playtime_max":         {"label": "プレイ時間カンスト",         "price": 200},
-    "gold_pass":            {"label": "ゴールド会員化",             "price": 200},
-    "facility_max":         {"label": "施設LvMAX",                 "price": 100},
-    "gamatoto_max":         {"label": "ガマトトLvMAX",              "price": 200},
-    "gamatoto_legend":      {"label": "ガマトト助手全員レジェンド", "price": 200},
-    "ad_free":              {"label": "広告非表示（β）",            "price": 50},
-    "ototo_max":            {"label": "オトート全城強化LvMAX",      "price": 200},
-    "shrine_max":           {"label": "にゃんこ神社LvMAX",         "price": 100},
+    "battle_items_999":      {"label": "アイテム各999個",            "price": 150},
+    "matatabi_998":          {"label": "ネコみかん 998個",           "price": 150},
+    "cats_eye_999":          {"label": "ネコのめ 999個",            "price": 150},
+    "nekovitan_999":         {"label": "ネコビタン 999個",           "price": 150},
+    "castle_parts_999":      {"label": "城素材各999個",              "price": 200},
+    "event_ticket_999":      {"label": "イベントチケット各999",      "price": 200},
+    "honnou_99":             {"label": "本能玉 全属性Lv99",          "price": 300},
+    "dungeon_medal_99":      {"label": "ダンジョンメダル 99枚",      "price": 150},
+    "main_clear":            {"label": "第1章～第3章 全クリア",       "price": 300},
+    "zombie_clear":          {"label": "ゾンビ襲来 全クリア",         "price": 200},
+    "old_legend_clear":      {"label": "旧レジェンド 全クリア",       "price": 300},
+    "true_legend_clear":     {"label": "真レジェンド 全クリア",       "price": 500},
+    "zero_legend_clear":     {"label": "零レジェンド 全クリア",       "price": 500},
+    "makai_clear":           {"label": "魔界編 全クリア",             "price": 300},
+    "event_clear":           {"label": "イベントステージ全クリア",    "price": 400},
+    "all_char_unlock":       {"label": "全キャラ開放",               "price": 500},
+    "error_char_delete":     {"label": "エラーキャラ削除",           "price": 0},
+    "all_char_lv_max":       {"label": "所持キャラ全員LvMAX",         "price": 500},
+    "all_char_max_form":     {"label": "所持キャラ最高形態",          "price": 500},
+    "all_honnou_max":        {"label": "全キャラ本能解放LvMAX",       "price": 800},
+    "telop_delete":          {"label": "開放テロップ削除",           "price": 0},
+    "slot_max":              {"label": "編成スロット数最大拡張",     "price": 50},
+    "medal_all":             {"label": "にゃんこメダル全開放",       "price": 100},
+    "enemy_book_all":        {"label": "敵キャラ図鑑全開放",         "price": 100},
+    "user_rank_all":         {"label": "ユーザーランク報酬全受取",   "price": 50},
+    "playtime_max":          {"label": "プレイ時間カンスト",         "price": 200},
+    "gold_pass":             {"label": "ゴールド会員化",             "price": 200},
+    "facility_max":          {"label": "施設LvMAX",                 "price": 100},
+    "gamatoto_max":          {"label": "ガマトトLvMAX",              "price": 200},
+    "gamatoto_legend":       {"label": "ガマトト助手全員レジェンド", "price": 200},
+    "ad_free":               {"label": "広告非表示（β）",            "price": 50},
+    "ototo_max":             {"label": "オトート全城強化LvMAX",      "price": 200},
+    "shrine_max":            {"label": "にゃんこ神社LvMAX",         "price": 100},
 }
 
 # =====================
@@ -196,6 +196,7 @@ def is_admin(user_id: int) -> bool:
 # bcsfe セーブ編集処理
 # =====================
 _valid_cat_max_cache: int | None = None
+
 def _get_valid_cat_max() -> int:
     HARDCODED_MAX = 674
     try:
@@ -388,7 +389,6 @@ def apply_edits(save_file, item_keys: list) -> list:
                         return True
                     except: pass
                 return False
-
             if key == "catfood_50000":
                 try: sv("catfood", min(int(sf.catfood) + 50000, 9999999))
                 except: sv("catfood", min(int(sf.catfood.value) + 50000, 9999999))
@@ -671,7 +671,6 @@ def apply_edits(save_file, item_keys: list) -> list:
             elif key == "shrine_max":
                 try: sf.cat_shrine.level.value = 50
                 except: pass
-
             applied.append(ITEM_CONFIG[key]["label"])
         except Exception as e:
             logger.warning(f"[apply_edits] {key} 適用失敗: {e}")
@@ -862,7 +861,7 @@ class PurchaseModal(ui.Modal, title="購入情報入力"):
                                   self.items, self.items, self.total)
 
 # =====================
-# ✅ パネルUI（Selectエラー完全修正版）
+# ✅ パネルUI（構文エラー完全修正版）
 # =====================
 class ClonePanelView(ui.View):
     def __init__(self, guild_id: int = 0):
@@ -888,7 +887,8 @@ class CloneSelectMenu(ui.Select):
         self.guild_id = guild_id
 
     async def callback(self, interaction: discord.Interaction):
-        selected = self.values        if selected == "admin_menu":
+        selected = self.values
+        if selected[0] == "admin_menu":
             if not is_admin(interaction.user.id):
                 await interaction.response.send_message("❌ 管理者専用メニューです。", ephemeral=True)
                 return
@@ -898,31 +898,31 @@ class CloneSelectMenu(ui.Select):
                 ephemeral=True
             )
             return
-        if selected == "clone":
+        if selected[0] == "clone":
             price = get_special_price("clone", CLONE_PRICE_DEFAULT, self.guild_id)
             label = "✅ アカウント複製"
             await interaction.response.send_modal(
                 ServiceModal(label, price, is_clone=True)
             )
             return
-        if selected == "edit_chara":
+        if selected[0] == "edit_chara":
             price = get_special_price("chara_edit", CHARA_UNLOCK_PRICE_DEFAULT, self.guild_id)
             label = "👤 キャラクター編集"
             await interaction.response.send_modal(CharaModal(label, price))
             return
-        if selected == "edit_single":
+        if selected[0] == "edit_single":
             view = SingleItemView(self.guild_id)
             embed = Embed(title="🎫 単品編集", description="編集したい項目を選んでください。", color=0xffcc00)
             await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
             return
-        if selected == "edit_set":
+        if selected[0] == "edit_set":
             view = SetItemView(self.guild_id)
             embed = Embed(title="📦 セット購入", description="まとめて適用するセットを選んでください。", color=0x00cc88)
             await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
             return
 
 # =====================
-# ✅ 単品編集ビュー（Selectエラー修正版）
+# ✅ 単品編集ビュー
 # =====================
 class SingleItemSelect(ui.Select):
     def __init__(self, guild_id: int):
@@ -939,7 +939,6 @@ class SingleItemSelect(ui.Select):
             max_values=min(8, len(options)),
             options=options
         )
-
     async def callback(self, interaction: discord.Interaction):
         items_selected = self.values
         total = sum(get_price(k, self.guild_id) for k in items_selected)
@@ -994,7 +993,6 @@ class SetItemSelect(ui.Select):
             placeholder="セットを選択してください",
             options=options
         )
-
     async def callback(self, interaction: discord.Interaction):
         set_key = self.values[0]
         set_defs = {
