@@ -1,4 +1,5 @@
 import discord
+os.environ["BCSFE_CONFIG_HOME"] = os.path.dirname(os.path.abspath(__file__))
 from discord import app_commands, ui, Embed, Color, ButtonStyle
 from discord.ext import commands
 import os
