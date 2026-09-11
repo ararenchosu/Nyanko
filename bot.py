@@ -972,10 +972,12 @@ class SingleItemSelect(ui.Select):
         embed = Embed(title="✅ 選択内容確認", color=0xffcc00)
         embed.add_field(name="選択項目", value="\n".join(f"・{l}" for l in labels), inline=False)
         embed.add_field(name="合計金額", value=f"```{total}円```", inline=False)
-        await interaction.response.edit_message(
-            embed=embed,
-            view=ConfirmPurchaseView(items_selected, labels, total)
-        )
+
+await interaction.response.defer()  # ← この行を追加
+await interaction.edit_original_response(  # ← edit_message を edit_original_response に変更
+    embed=embed,
+    view=ConfirmPurchaseView(items_selected, labels, total)
+)
 
 class SingleItemView(ui.View):
     def __init__(self, guild_id: int):
