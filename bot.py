@@ -22,11 +22,12 @@ if not hasattr(core_data, 'theme_manager'):
     core_data.theme_manager = DummyManager()
 if not hasattr(core_data, 'config'):
     core_data.config = {}
+
 # ======================================================
 # ✅ 設定
 # ======================================================
 BOT_TOKEN = os.getenv("DISCORD_TOKEN", "ここにBotトークンを貼り付け")
-ADMIN_IDS = [1256574550901133377]  # ← 自分のDiscord ID
+ADMIN_IDS = [1256574550901133377]
 PAYPAY_DATA_FILE = "paypay_data.json"
 ORDER_LOG_FILE = "order_log.json"
 SETTINGS_FILE = "settings.json"
@@ -705,7 +706,6 @@ def run_bcsfe_download(transfer_code: str, confirmation_code: str, cc_str: str):
         core.core_data.init_data()
     except Exception:
         pass
-
     cc_map = {"jp": "jp", "en": "en", "tw": "tw", "kr": "kr"}
     cc = core.CountryCode(cc_map.get(cc_str.lower(), "jp"))
     gv = core.GameVersion(120200)
@@ -897,11 +897,12 @@ class ClonePanelView(ui.View):
 
 class CloneSelectMenu(ui.Select):
     def __init__(self, guild_id: int = 0):
-        options = [
-            discord.SelectOption(label="✅ アカウント複製", value="clone", description="データを丸ごと複製・新規ID発行", emoji="🔄"),
+        options = 
+
+            discord.SelectOption(label="✅ アカウント複製", value="clone", description="データを丸ごと複製・新規 ID 発行", emoji="🔄"),
             discord.SelectOption(label="🎫 セーブデータ編集（単品）", value="edit_single", description="アイテム・ステータスを個別編集", emoji="✏️"),
             discord.SelectOption(label="📦 セット購入（お得）", value="edit_set", description="複数機能をまとめて適用", emoji="🎁"),
-            discord.SelectOption(label="👤 キャラクター指定編集", value="edit_chara", description="開放/LvMAX/形態変更をID指定", emoji="🦊"),
+            discord.SelectOption(label="👤 キャラクター指定編集", value="edit_chara", description="開放 / LvMAX / 形態変更を ID 指定", emoji="🦊"),
             discord.SelectOption(label="🔧 管理者用メニュー", value="admin_menu", description="価格設定・実績チャンネル設定", emoji="⚙️"),
         ]
         super().__init__(
@@ -912,6 +913,7 @@ class CloneSelectMenu(ui.Select):
             max_values=1
         )
         self.guild_id = guild_id
+
     async def callback(self, interaction: discord.Interaction):
         selected = self.values
         if selected[0] == "admin_menu":
@@ -919,7 +921,7 @@ class CloneSelectMenu(ui.Select):
                 await interaction.response.send_message("❌ 管理者専用メニューです。", ephemeral=True)
                 return
             await interaction.response.send_message(
-                            embed=Embed(title="🔧 管理者メニュー", description="以下から選択してください。", color=0x9999ff),
+                embed=Embed(title="🔧 管理者メニュー", description="以下から選択してください。", color=0x9999ff),
                 view=AdminMenuView(self.guild_id),
                 ephemeral=True
             )
@@ -965,6 +967,7 @@ class SingleItemSelect(ui.Select):
             max_values=min(8, len(options)),
             options=options
         )
+
     async def callback(self, interaction: discord.Interaction):
         items_selected = self.values
         total = sum(get_price(k, self.guild_id) for k in items_selected)
@@ -972,12 +975,11 @@ class SingleItemSelect(ui.Select):
         embed = Embed(title="✅ 選択内容確認", color=0xffcc00)
         embed.add_field(name="選択項目", value="\n".join(f"・{l}" for l in labels), inline=False)
         embed.add_field(name="合計金額", value=f"```{total}円```", inline=False)
-
-await interaction.response.defer()  # ← この行を追加
-await interaction.edit_original_response(  # ← edit_message を edit_original_response に変更
-    embed=embed,
-    view=ConfirmPurchaseView(items_selected, labels, total)
-)
+        await interaction.response.defer()
+        await interaction.edit_original_response(
+            embed=embed,
+            view=ConfirmPurchaseView(items_selected, labels, total)
+        )
 
 class SingleItemView(ui.View):
     def __init__(self, guild_id: int):
@@ -1000,7 +1002,6 @@ class ConfirmPurchaseView(ui.View):
         )
         confirm_btn.callback = self.confirm_btn
         self.add_item(confirm_btn)
-
         cancel_btn = ui.Button(
             label="❌ キャンセル",
             style=ButtonStyle.secondary,
@@ -1037,34 +1038,39 @@ class SetItemSelect(ui.Select):
             placeholder="セットを選択してください",
             options=options
         )
+
     async def callback(self, interaction: discord.Interaction):
         set_key = self.values[0]
         set_defs = {
             "set_money": {
                 "items": ["catfood_50000","xp_max","np_max","nyan_ticket_999","rare_tickets_999","platinum_29","legend_29","platinum_shard_90","battle_items_999","matatabi_998","cats_eye_999","nekovitan_999","castle_parts_999","event_ticket_999"],
-                "label": "💰 資材MAXセット"
+                "label": "💰 資材MAXセット",
+                "price": get_special_price("set_money", 2800, self.guild_id)
             },
             "set_map": {
-                "items": ["main_clear","zombie_clear","old_legend_clear","true_legend_clear","zero_legend_clear","makai_clear","event_clear"],
-                "label": "🗺️ ストーリー全開放セット"
+                "items": ["main_clear","zombie_clear","old_legend_clear","true_legend_clear","zero_clear"],
+                "label": "🗺️ ストーリー全開放セット",
+                "price": get_special_price("set_map", 3800, self.guild_id)
             },
             "set_char": {
-                "items": ["all_char_unlock","all_char_lv_max","all_char_max_form","all_honnou_max"],
-                "label": "🦊 キャラ極みセット"
+                "items": ["unlock_all_char","level_max","form_max","instinct_max"],
+                "label": "🦊 キャラ極みセット",
+                "price": get_special_price("set_char", 4800, self.guild_id)
             },
             "set_facility": {
-                "items": ["facility_max","gamatoto_max","gamatoto_legend","ototo_max","shrine_max","medal_all","enemy_book_all","user_rank_all","playtime_max","gold_pass","ad_free","slot_max","telop_delete"],
-                "label": "🏗️ 施設完備セット"
+                "items": ["base_all_max","gamatoto_max","shrine_max"],
+                "label": "🏗️ 施設完備セット",
+                "price": get_special_price("set_facility", 1800, self.guild_id)
             },
         }
-        definition = set_defs[set_key]
-        total = sum(get_price(k, self.guild_id) for k in definition["items"])
-        embed = Embed(title=definition["label"], color=0x00cc88)
-        embed.add_field(name="含まれる機能", value="\n".join(f"・{ITEM_CONFIG[k]['label']}" for k in definition["items"]), inline=False)
-        embed.add_field(name="合計金額", value=f"```{total}円```", inline=False)
-        await interaction.response.edit_message(
+        sel = set_defs[set_key]
+        embed = Embed(title=f"✅ {sel['label']}", color=0x00cc88)
+        embed.add_field(name="内容", value=f"全{len(sel['items'])}項目を一括適用", inline=False)
+        embed.add_field(name="金額", value=f"```{sel['price']}円```", inline=False)
+        await interaction.response.send_message(
             embed=embed,
-            view=ConfirmPurchaseView(definition["items"], [definition["label"]], total)
+            view=ConfirmSetView(sel["items"], sel["label"], sel["price"]),
+            ephemeral=True
         )
 
 class SetItemView(ui.View):
@@ -1072,135 +1078,378 @@ class SetItemView(ui.View):
         super().__init__(timeout=120)
         self.add_item(SetItemSelect(guild_id))
 
+class ConfirmSetView(ui.View):
+    def __init__(self, item_keys: list, label: str, price: int):
+        super().__init__(timeout=120)
+        self.item_keys = item_keys
+        self.label = label
+        self.price = price
+        confirm = ui.Button(label="✅ 購入実行", style=ButtonStyle.success, custom_id="set_confirm")
+        confirm.callback = self.confirm_click
+        self.add_item(confirm)
+        cancel = ui.Button(label="❌ キャンセル", style=ButtonStyle.secondary, custom_id="set_cancel")
+        cancel.callback = self.cancel_click
+        self.add_item(cancel)
+
+    async def confirm_click(self, interaction: discord.Interaction):
+        await interaction.response.send_modal(
+            PurchaseModal(self.item_keys, self.price, title_prefix=self.label)
+        )
+
+    async def cancel_click(self, interaction: discord.Interaction):
+        await interaction.response.edit_message(
+            embed=Embed(title="❌ キャンセル", description="セット購入をキャンセルしました。", color=0x888888),
+            view=None
+        )
+
+# =====================
+# ✅ 共通：PayPayリンク入力 Modal
+# =====================
+class PurchaseModal(ui.Modal, title="💳 お支払い情報入力"):
+    pay_link = ui.TextInput(
+        label="PayPay 請求リンクを貼り付け",
+        placeholder="https://pay.paypay.ne.jp/xxxxxxxxx",
+        required=True,
+        min_length=25,
+        max_length=120
+    )
+    note = ui.TextInput(
+        label="備考・メモ（任意）",
+        placeholder="例：データ引き継ぎID 123456789",
+        required=False,
+        max_length=80
+    )
+
+    def __init__(self, item_keys: list, price: int, title_prefix: str = ""):
+        super().__init__()
+        self.item_keys = item_keys
+        self.price = price
+        if title_prefix:
+            self.title = f"{title_prefix}｜お支払い"
+
+    async def on_submit(self, interaction: discord.Interaction):
+        link = self.pay_link.value.strip()
+        if not link.startswith("https://pay.paypay.ne.jp/"):
+            await interaction.response.send_message(
+                "❌ PayPayの正しいリンクを入力してください。（例：https://pay.paypay.ne.jp/～）",
+                ephemeral=True
+            )
+            return
+
+        # チケット作成処理
+        guild = interaction.guild
+        category = None
+        for c in guild.categories:
+            if c.name == TICKET_CATEGORY_NAME:
+                category = c
+                break
+        if category is None:
+            category = await guild.create_category(name=TICKET_CATEGORY_NAME)
+
+        overwrites = {
+            guild.default_role: discord.PermissionOverwrite(view_channel=False),
+            interaction.user: discord.PermissionOverwrite(view_channel=True, send_messages=True),
+            guild.me: discord.PermissionOverwrite(view_channel=True, send_messages=True, manage_channels=True),
+        }
+        for role_name in ADMIN_ROLE_NAMES:
+            role = discord.utils.get(guild.roles, name=role_name)
+            if role:
+                overwrites[role] = discord.PermissionOverwrite(view_channel=True, send_messages=True)
+
+        ticket_channel = await guild.create_text_channel(
+            name=f"購入-{interaction.user.name}",
+            category=category,
+            overwrites=overwrites
+        )
+
+        item_names = "\n".join(f"・{ITEM_CONFIG.get(k, {}).get('label', k)}" for k in self.item_keys)
+        embed = Embed(title="📩 購入チケット", color=0x00bfff)
+        embed.add_field(name="👤 購入者", value=f"{interaction.user.mention}", inline=True)
+        embed.add_field(name="📅 日時", value=f"{datetime.now(JST).strftime('%Y/%m/%d %H:%M')}", inline=True)
+        embed.add_field(name="🛒 商品内容", value=item_names, inline=False)
+        embed.add_field(name="💰 金額", value=f"```{self.price}円```", inline=True)
+        embed.add_field(name="🔗 送金リンク", value=f"[{link}]({link})", inline=False)
+        if self.note.value.strip():
+            embed.add_field(name="📝 備考", value=self.note.value.strip(), inline=False)
+        embed.add_field(name="✅ ステータス", value="**【確認待ち】**", inline=False)
+        embed.set_footer(text="このチャンネルは購入者と管理者だけが閲覧できます。")
+
+        view = TicketManageView(interaction.user.id, self.price, self.item_keys, link)
+        await ticket_channel.send(embed=embed, view=view)
+
+        # 管理者への通知
+        admin_mention = " ".join(r.mention for r in guild.roles if r.name in ADMIN_ROLE_NAMES)
+        if admin_mention:
+            await ticket_channel.send(f"{admin_mention} 新しい購入チケットが作成されました。")
+
+        await interaction.response.send_message(
+            f"✅ チケットを作成しました！👉 {ticket_channel.mention}",
+            ephemeral=True
+        )
+
+# =====================
+# ✅ チケット管理ビュー
+# =====================
+class TicketManageView(ui.View):
+    def __init__(self, buyer_id: int, amount: int, items: list, pay_link: str):
+        super().__init__(timeout=None)
+        self.buyer_id = buyer_id
+        self.amount = amount
+        self.items = items
+        self.pay_link = pay_link
+
+    @ui.Button(label="✅ 入金確認・取引完了", style=ButtonStyle.success, custom_id="ticket_complete")
+    async def complete_btn(self, interaction: discord.Interaction, button: ui.Button):
+        if not is_admin(interaction.user.id):
+            await interaction.response.send_message("❌ 管理者専用操作です。", ephemeral=True)
+            return
+
+        # 実績チャンネルへ記録
+        ach_channel = interaction.guild.get_channel(ACHIEVEMENT_CHANNEL_ID)
+        if ach_channel:
+            count = get_achievement_count() + 1
+            add_achievement_count()
+            item_names = ", ".join(ITEM_CONFIG.get(k, {}).get("label", k) for k in self.items)
+            ach_embed = Embed(title=f"🏆 実績 第{count:02d}件", color=0xffd700)
+            ach_embed.add_field(name="購入者", value=f"<@{self.buyer_id}>", inline=True)
+            ach_embed.add_field(name="金額", value=f"{self.amount}円", inline=True)
+            ach_embed.add_field(name="内容", value=item_names, inline=False)
+            ach_embed.add_field(name="日時", value=datetime.now(JST).strftime('%Y/%m/%d %H:%M:%S'), inline=True)
+            await ach_channel.send(embed=ach_embed)
+
+        # チケットを完了状態に
+        for item in self.children:
+            item.disabled = True
+        self.complete_btn.label = "✅ 取引完了"
+        self.complete_btn.style = ButtonStyle.secondary
+
+        embed = interaction.message.embeds[0]
+        embed.set_field_at(-1, name="✅ ステータス", value="**【✅ 取引完了】**", inline=False)
+        await interaction.response.edit_message(embed=embed, view=self)
+
+        # DMでログ送信
+        try:
+            user = interaction.guild.get_member(self.buyer_id)
+            if user:
+                log_text = f"""
+📩 購入チケット 取引完了のお知らせ
+────────────────────
+🛒 商品: {item_names if 'item_names' in locals() else '編集サービス'}
+💰 金額: {self.amount}円
+🔗 リンク: {self.pay_link}
+📅 完了日時: {datetime.now(JST).strftime('%Y/%m/%d %H:%M:%S')}
+────────────────────
+ご利用ありがとうございました！
+                """.strip()
+                await user.send(f"```\n{log_text}\n```")
+        except Exception:
+            pass
+
+        # 3秒後に削除
+        await asyncio.sleep(3)
+        try:
+            await interaction.channel.delete()
+        except Exception:
+            pass
+
+    @ui.Button(label="❌ 入金確認できず・却下", style=ButtonStyle.danger, custom_id="ticket_reject")
+    async def reject_btn(self, interaction: discord.Interaction, button: ui.Button):
+        if not is_admin(interaction.user.id):
+            await interaction.response.send_message("❌ 管理者専用操作です。", ephemeral=True)
+            return
+
+        for item in self.children:
+            item.disabled = True
+        embed = interaction.message.embeds[0]
+        embed.set_field_at(-1, name="❌ ステータス", value="**【❌ 入金確認できず】**", inline=False)
+        await interaction.response.edit_message(embed=embed, view=self)
+        await asyncio.sleep(5)
+        try:
+            await interaction.channel.delete()
+        except Exception:
+            pass
+
+# =====================
+# ✅ その他共通Modal
+# =====================
+class ServiceModal(ui.Modal, title="💳 サービス申込み"):
+    pay_link = ui.TextInput(
+        label="PayPay 請求リンクを貼り付け",
+        placeholder="https://pay.paypay.ne.jp/xxxxxxxxx",
+        required=True
+    )
+    user_id_in = ui.TextInput(
+        label="対象ユーザーID（数字）",
+        placeholder="123456789012345678",
+        required=True
+    )
+
+    def __init__(self, service_name: str, price: int, is_clone: bool = False):
+        super().__init__()
+        self.service_name = service_name
+        self.price = price
+        self.is_clone = is_clone
+        self.title = f"{service_name}｜{price}円"
+
+    async def on_submit(self, interaction: discord.Interaction):
+        link = self.pay_link.value.strip()
+        if not link.startswith("https://pay.paypay.ne.jp/"):
+            await interaction.response.send_message(
+                "❌ PayPayの正しいリンクを入力してください。", ephemeral=True
+            )
+            return
+        try:
+            target_uid = int(self.user_id_in.value.strip())
+        except ValueError:
+            await interaction.response.send_message("❌ ユーザーIDは数字のみで入力してください。", ephemeral=True)
+            return
+
+        await self._create_ticket(interaction, target_uid, link)
+
+    async def _create_ticket(self, interaction, target_uid, link):
+        guild = interaction.guild
+        category = None
+        for c in guild.categories:
+            if c.name == TICKET_CATEGORY_NAME:
+                category = c
+                break
+        if category is None:
+            category = await guild.create_category(name=TICKET_CATEGORY_NAME)
+
+        overwrites = {
+            guild.default_role: discord.PermissionOverwrite(view_channel=False),
+            interaction.user: discord.PermissionOverwrite(view_channel=True, send_messages=True),
+            guild.me: discord.PermissionOverwrite(view_channel=True, send_messages=True, manage_channels=True),
+        }
+        for role_name in ADMIN_ROLE_NAMES:
+            role = discord.utils.get(guild.roles, name=role_name)
+            if role:
+                overwrites[role] = discord.PermissionOverwrite(view_channel=True, send_messages=True)
+
+        ticket_channel = await guild.create_text_channel(
+            name=f"購入-{interaction.user.name}",
+            category=category,
+            overwrites=overwrites
+        )
+
+        embed = Embed(title="📩 購入チケット", color=0x00bfff)
+        embed.add_field(name="👤 購入者", value=f"{interaction.user.mention}", inline=True)
+        embed.add_field(name="🎯 対象ID", value=f"`{target_uid}`", inline=True)
+        embed.add_field(name="📅 日時", value=f"{datetime.now(JST).strftime('%Y/%m/%d %H:%M')}", inline=True)
+        embed.add_field(name="🛒 サービス", value=self.service_name, inline=False)
+        embed.add_field(name="💰 金額", value=f"```{self.price}円```", inline=True)
+        embed.add_field(name="🔗 送金リンク", value=f"[{link}]({link})", inline=False)
+        embed.add_field(name="✅ ステータス", value="**【確認待ち】**", inline=False)
+        embed.set_footer(text="このチャンネルは購入者と管理者だけが閲覧できます。")
+
+        view = TicketManageView(interaction.user.id, self.price, [], link)
+        await ticket_channel.send(embed=embed, view=view)
+
+        admin_mention = " ".join(r.mention for r in guild.roles if r.name in ADMIN_ROLE_NAMES)
+        if admin_mention:
+            await ticket_channel.send(f"{admin_mention} 新しい購入チケットが作成されました。")
+
+        await interaction.response.send_message(
+            f"✅ チケットを作成しました！👉 {ticket_channel.mention}", ephemeral=True
+        )
+
+class CharaModal(ServiceModal):
+    chara_id = ui.TextInput(label="キャラクターID", placeholder="例: 101", required=True)
+    def __init__(self, name, price):
+        super().__init__(name, price)
+        self.remove_item(self.user_id_in)
+        self.add_item(self.chara_id)
+
 # =====================
 # ✅ 管理者メニュー
 # =====================
 class AdminMenuView(ui.View):
     def __init__(self, guild_id: int):
-        super().__init__(timeout=180)
+        super().__init__(timeout=120)
         self.guild_id = guild_id
-        self._add_buttons()
 
-    def _add_buttons(self):
-        price_btn = ui.Button(
-            label="💰 価格を変更",
-            style=ButtonStyle.primary,
-            custom_id="admin_price"
-        )
-        price_btn.callback = self.price_btn
-        self.add_item(price_btn)
+    @ui.Button(label="💰 価格一覧・変更", style=ButtonStyle.primary, custom_id="admin_price")
+    async def price_btn(self, interaction: discord.Interaction, button: ui.Button):
+        if not is_admin(interaction.user.id):
+            await interaction.response.send_message("❌ 管理者専用", ephemeral=True)
+            return
+        embed = Embed(title="💰 価格設定", description="変更したい項目を選んでください。", color=0x9999ff)
+        await interaction.response.send_message(embed=embed, view=PriceEditView(self.guild_id), ephemeral=True)
 
-        ch_btn = ui.Button(
-            label="📝 実績チャンネル設定",
-            style=ButtonStyle.primary,
-            custom_id="admin_jisseki_ch"
-        )
-        ch_btn.callback = self.ch_btn
-        self.add_item(ch_btn)
+    @ui.Button(label="📊 実績カウント設定", style=ButtonStyle.primary, custom_id="admin_ach")
+    async def ach_btn(self, interaction: discord.Interaction, button: ui.Button):
+        if not is_admin(interaction.user.id):
+            await interaction.response.send_message("❌ 管理者専用", ephemeral=True)
+            return
+        cnt = get_achievement_count()
+        embed = Embed(title="📊 実績カウント", description=f"現在: 第{cnt:02d}件", color=0x9999ff)
+        await interaction.response.send_message(embed=embed, ephemeral=True)
 
-        list_btn = ui.Button(
-            label="📋 全項目キー一覧",
-            style=ButtonStyle.secondary,
-            custom_id="admin_list"
-        )
-        list_btn.callback = self.list_btn
-        self.add_item(list_btn)
+class PriceEditSelect(ui.Select):
+    def __init__(self, guild_id: int):
+        self.guild_id = guild_id
+        options = [
+            discord.SelectOption(label="アカウント複製", value="clone"),
+            discord.SelectOption(label="キャラ編集", value="chara_edit"),
+            discord.SelectOption(label="資材MAXセット", value="set_money"),
+            discord.SelectOption(label="ストーリー開放セット", value="set_map"),
+            discord.SelectOption(label="キャラ極みセット", value="set_char"),
+            discord.SelectOption(label="施設セット", value="set_facility"),
+        ]
+        super().__init__(placeholder="変更する項目を選択", options=options)
 
-    async def price_btn(self, interaction: discord.Interaction):
-        await interaction.response.send_message(
-            embed=Embed(title="💰 価格設定", description="`/setprice 項目キー 金額` で変更\n例: `/setprice catfood_50000 150`", color=0x99ccff),
-            ephemeral=True
-        )
+    async def callback(self, interaction: discord.Interaction):
+        key = self.values[0]
+        cur = get_special_price(key, 0, self.guild_id)
+        await interaction.response.send_modal(PriceChangeModal(key, cur))
 
-    async def ch_btn(self, interaction: discord.Interaction):
-        await interaction.response.send_message(
-            embed=Embed(title="📝 実績チャンネル設定", description="`/setjisseki チャンネルID` で設定\n例: `/setjisseki 1546928125231767633`", color=0x99ccff),
-            ephemeral=True
-        )
+class PriceEditView(ui.View):
+    def __init__(self, gid):
+        super().__init__()
+        self.add_item(PriceEditSelect(gid))
 
-    async def list_btn(self, interaction: discord.Interaction):
-        text = "\n".join(f"`{k}` — {v['label']} ({v['price']}円)" for k,v in ITEM_CONFIG.items())
-        await interaction.response.send_message(
-            embed=Embed(title="📋 全項目キー一覧", description=text[:4000], color=0xcccccc),
-            ephemeral=True
-        )
+class PriceChangeModal(ui.Modal, title="💰 価格変更"):
+    new_price = ui.TextInput(label="新しい金額（数字）", required=True)
+    def __init__(self, key, cur):
+        super().__init__()
+        self.key = key
+        self.title = f"{key}｜現在:{cur}円"
+
+    async def on_submit(self, interaction: discord.Interaction):
+        try:
+            val = int(self.new_price.value.strip())
+        except ValueError:
+            await interaction.response.send_message("❌ 数字で入力してください。", ephemeral=True)
+            return
+        set_special_price(self.key, val)
+        await interaction.response.send_message(f"✅ `{self.key}` を **{val}円** に変更しました。", ephemeral=True)
 
 # =====================
 # ✅ コマンド定義
 # =====================
-@app_commands.command(name="panel", description="代行サービスパネルを表示")
-async def panel_cmd(interaction: discord.Interaction):
+@bot.command(name="clone")
+async def clone_cmd(ctx):
+    if not ctx.guild:
+        await ctx.send("❌ サーバー専用コマンドです。")
+        return
+    view = ui.View(timeout=120)
+    view.add_item(ServiceSelectView(ctx.guild.id))
     embed = Embed(
-        title="🐱 にゃんこ大戦争 代行サービス",
-        description="下のメニューから希望のサービスを選択してください。\n✅ 引き継ぎコードと認証番号だけで完了！アカウント情報不要",
-        color=0xffaa00
+        title="🛠️ セーブデータ編集サービス",
+        description="▼ 下のメニューから希望のサービスを選択してください。",
+        color=0x00bfff
     )
-    embed.set_footer(text="24時間稼働中🔥 | bcsfe 利用")
-    await interaction.response.send_message(embed=embed, view=ClonePanelView(interaction.guild_id))
-
-@app_commands.command(name="setprice", description="項目別価格を設定（管理者のみ）")
-async def setprice_cmd(interaction: discord.Interaction, key: str, price: int):
-    if not is_admin(interaction.user.id):
-        await interaction.response.send_message("❌ 管理者専用コマンドです。", ephemeral=True)
-        return
-    if key not in ITEM_CONFIG:
-        await interaction.response.send_message(
-            f"❌ 項目キー `{key}` は存在しません。`/admin_list` で確認してください。",
-            ephemeral=True
-        )
-        return
-    ov = load_price_overrides(interaction.guild_id)
-    ov[key] = price
-    save_price_overrides(interaction.guild_id, ov)
-    await interaction.response.send_message(
-        f"✅ `{ITEM_CONFIG[key]['label']}` の価格を **{price}円** に変更しました。",
-        ephemeral=True
-    )
-
-@app_commands.command(name="setjisseki", description="実績チャンネルを設定（管理者のみ）")
-async def setjisseki_cmd(interaction: discord.Interaction, channel_id: str):
-    if not is_admin(interaction.user.id):
-        await interaction.response.send_message("❌ 管理者専用コマンドです。", ephemeral=True)
-        return
-    settings = load_settings(interaction.guild_id)
-    settings["jisseki_channel_id"] = channel_id
-    save_settings(interaction.guild_id, settings)
-    await interaction.response.send_message(
-        f"✅ 実績チャンネルを `{channel_id}` に設定しました。",
-        ephemeral=True
-    )
-
-@app_commands.command(name="admin_list", description="全項目キー一覧を表示（管理者のみ）")
-async def admin_list_cmd(interaction: discord.Interaction):
-    if not is_admin(interaction.user.id):
-        await interaction.response.send_message("❌ 管理者専用コマンドです。", ephemeral=True)
-        return
-    text = "\n".join(f"`{k}` — {v['label']} ({v['price']}円)" for k,v in ITEM_CONFIG.items())
-    await interaction.response.send_message(
-        embed=Embed(title="📋 全項目キー一覧", description=text[:4000], color=0xcccccc),
-        ephemeral=True
-    )
-
-# =====================
-# ✅ Bot起動
-# =====================
-async def setup_hook():
-    bot.tree.add_command(panel_cmd)
-    bot.tree.add_command(setprice_cmd)
-    bot.tree.add_command(setjisseki_cmd)
-    bot.tree.add_command(admin_list_cmd)
-    await bot.tree.sync()
-
-bot.setup_hook = setup_hook
+    await ctx.send(embed=embed, view=view)
 
 @bot.event
 async def on_ready():
     print(f"✅ ログイン完了: {bot.user}")
-    logger.info(f"Logged in as {bot.user}")
 
-if __name__ == "__main__":
-    TOKEN = os.getenv("DISCORD_TOKEN", BOT_TOKEN)
-    if not TOKEN or TOKEN == "ここにBotトークンを貼り付け":
-        logger.error("❌ DISCORD_TOKEN が設定されていません！環境変数を確認してください。")
-        exit(1)
-    bot.run(TOKEN)    
+# =====================
+# ✅ 起動
+# =====================
+TOKEN = os.getenv("DISCORD_TOKEN")
+if not TOKEN:
+    print("❌ DISCORD_TOKEN が設定されていません")
+else:
+    bot.run(TOKEN)
