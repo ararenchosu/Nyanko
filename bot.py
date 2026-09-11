@@ -1,6 +1,7 @@
 import discord
 import os
-os.environ["BCSFE_CONFIG_HOME"] = os.path.dirname(os.path.abspath(__file__))
+import tempfile
+os.environ["BCSFE_CONFIG_HOME"] = tempfile.mkdtemp(prefix="bcsfe_")
 from discord import app_commands, ui, Embed, Color, ButtonStyle
 from discord.ext import commands
 import os
