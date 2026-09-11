@@ -1,28 +1,22 @@
 import discord
-from discord import app_commands, ui
+from discord import app_commands, ui, Embed, Color, ButtonStyle
 from discord.ext import commands
 import os
 import json
 import logging
-import uuid
 from datetime import datetime, timedelta, timezone
-
 # ======================================================
 # ✅ 設定
 # ======================================================
 BOT_TOKEN = os.getenv("DISCORD_TOKEN", "ここにBotトークンを貼り付け")
 ADMIN_IDS = [1256574550901133377]  # ← 自分のDiscord IDに書き換え
-
 PAYPAY_DATA_FILE = "paypay_data.json"
 ORDER_LOG_FILE = "order_log.json"
 SETTINGS_FILE = "settings.json"
 PRICE_FILE = "price_overrides.json"
-
 # ❌ PayPay不使用のためFalse
 PAYPAY_AVAILABLE = False
-
 JST = timezone(timedelta(hours=9))
-
 # 特殊サービス価格
 CLONE_PRICE_DEFAULT    = 500
 FULL_EDIT_PRICE_DEFAULT = 300
@@ -30,6 +24,11 @@ RECOVERY_PRICE_DEFAULT  = 300
 CHARA_UNLOCK_PRICE_DEFAULT = 100
 CHARA_LVMAX_PRICE_DEFAULT  = 150
 CHARA_FORM_PRICE_DEFAULT   = 100
+
+intents = discord.Intents.default()
+intents.message_content = True
+intents.members = True
+bot = commands.Bot(command_prefix='/', intents=intents)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -103,7 +102,6 @@ def save_paypay_data(data: dict):
         json.dump(data, f, indent=4, ensure_ascii=False)
 
 def load_order_log() -> list:
-    import datetime
     if os.path.exists(ORDER_LOG_FILE):
         try:
             with open(ORDER_LOG_FILE, "r", encoding="utf-8") as f:
@@ -112,15 +110,14 @@ def load_order_log() -> list:
             return []
     else:
         return []
-    cutoff = datetime.datetime.now() - datetime.timedelta(days=1)
-    log = [e for e in log if datetime.datetime.fromisoformat(e["timestamp"]) > cutoff]
+    cutoff = datetime.now() - timedelta(days=1)
+    log = [e for e in log if datetime.fromisoformat(e["timestamp"]) > cutoff]
     return log
 
 def log_order(user_id: int, username: str, items: list, amount: int, status: str):
-    import datetime
     log = load_order_log()
     log.append({
-        "timestamp": datetime.datetime.now().isoformat(),
+        "timestamp": datetime.now().isoformat(),
         "user_id": str(user_id),
         "username": username,
         "items": items,
@@ -197,7 +194,7 @@ def is_admin(user_id: int) -> bool:
     return user_id in ADMIN_IDS
 
 # =====================
-# bcsfe セーブ編集処理（ここから下はbcsfe依存）
+# bcsfe セーブ編集処理
 # =====================
 _valid_cat_max_cache: int | None = None
 def _get_valid_cat_max() -> int:
@@ -233,10 +230,6 @@ def _sv(save_file, attr: str, value: int):
             return
         except (TypeError, AttributeError):
             pass
-        try:
-            obj.set(value)
-        except Exception:
-            pass
     except Exception as e:
         logger.warning(f"_sv({attr}, {value}) 失敗: {e}")
 
@@ -253,24 +246,6 @@ def _sv_list(save_file, attr: str, value: int):
                     pass
     except Exception as e:
         logger.warning(f"_sv_list({attr}, {value}) 失敗: {e}")
-
-def _iter_cats(save_file):
-    try:
-        cats_obj = save_file.cats
-        for attr in ("cats", "data", "_cats", "items"):
-            try:
-                lst = getattr(cats_obj, attr, None)
-                if lst is not None and hasattr(lst, "__iter__"):
-                    return list(lst)
-            except Exception:
-                pass
-        try:
-            return list(cats_obj)
-        except Exception:
-            pass
-    except Exception:
-        pass
-    return []
 
 def _auto_run(func, save_file, inputs: list):
     import sys, io
@@ -290,7 +265,7 @@ def _auto_run(func, save_file, inputs: list):
     except Exception as e:
         sys.stdout = old_stdout
         sys.stderr = old_stderr
-        logger.warning(f"[_auto_run] {getattr(func, '__name__', str(func))} エラー: {e}")
+        logger.warning(f"[_auto_run] エラー: {e}")
         return
     finally:
         sys.stdin  = old_stdin
@@ -299,7 +274,6 @@ def _auto_run(func, save_file, inputs: list):
 
 def _clear_chapters(sf, chapters, name, logger):
     try:
-        ctype = type(chapters).__name__
         if hasattr(chapters, "clear_stage"):
             total_maps = len(chapters.chapters)
             cleared = 0
@@ -317,13 +291,13 @@ def _clear_chapters(sf, chapters, name, logger):
                 cleared += 1
             logger.info(f"{name}: {cleared}ch 完了")
             return cleared
-        if ctype == "ExChapters" or hasattr(chapters, "stages") and not hasattr(chapters, "chapters"):
+        if hasattr(chapters, "stages") and not hasattr(chapters, "chapters"):
             cleared = 0
             try:
                 ch_list = chapters.chapters
             except:
                 ch_list = []
-            for _ci, ch in enumerate(ch_list):
+            for ch in ch_list:
                 try:
                     stages = ch.stages
                     for st in stages:
@@ -333,7 +307,7 @@ def _clear_chapters(sf, chapters, name, logger):
                 except: pass
             logger.info(f"{name}: {cleared}ch 完了")
             return cleared
-        logger.warning(f"{name}: 未知の型 {ctype}")
+        logger.warning(f"{name}: 未知の型")
         return 0
     except Exception as e:
         logger.warning(f"{name} 失敗: {e}")
@@ -358,11 +332,11 @@ def apply_chara_edits(save_file, service_label: str, chara_ids_str: str) -> list
                     cat = candidate
                     break
             if cat is None:
-                logger.warning(f"[apply_chara_edits] 表示ID:{display_id}(内部:{cat_id}) キャラが見つからない")
+                logger.warning(f"[apply_chara_edits] 表示ID:{display_id} キャラが見つからない")
                 continue
             if "開放" in service_label:
                 cat.unlock(save_file)
-            elif "LvMAX" in service_label or "Lv MAX" in service_label:
+            elif "LvMAX" in service_label:
                 try:
                     from bcsfe import core as _c
                     pu = _c.PowerUpHelper(cat, save_file)
@@ -381,9 +355,9 @@ def apply_chara_edits(save_file, service_label: str, chara_ids_str: str) -> list
                         break
                     except: pass
             applied.append(f"{service_label}[ID:{display_id}]")
-            logger.info(f"[apply_chara_edits] 表示ID:{display_id}(内部:{cat_id}) {service_label} 完了")
+            logger.info(f"[apply_chara_edits] ID:{display_id} 完了")
         except Exception as e:
-            logger.warning(f"[apply_chara_edits] 表示ID:{display_id} 失敗: {e}")
+            logger.warning(f"[apply_chara_edits] ID:{display_id} 失敗: {e}")
     return applied
 
 def apply_edits(save_file, item_keys: list) -> list:
@@ -469,11 +443,11 @@ def apply_edits(save_file, item_keys: list) -> list:
             elif key == "matatabi_998": sv_list_multi(["catfruit", "cat_fruit"], 998)
             elif key == "cats_eye_999":
                 try:
-                    for _i in range(len(sf.catseyes)): sf.catseyes[_i] = 999
+                    for i in range(len(sf.catseyes)): sf.catseyes[i] = 999
                 except Exception as e: logger.warning(f"cats_eye_999 失敗: {e}")
             elif key == "nekovitan_999":
                 try:
-                    for _i in range(len(sf.catamins)): sf.catamins[_i] = 999
+                    for i in range(len(sf.catamins)): sf.catamins[i] = 999
                 except Exception as e: logger.warning(f"nekovitan_999 失敗: {e}")
             elif key == "castle_parts_999":
                 try:
@@ -505,7 +479,7 @@ def apply_edits(save_file, item_keys: list) -> list:
                 except Exception as e: logger.warning(f"honnou_99 失敗: {e}")
             elif key == "dungeon_medal_99":
                 try:
-                    for _i in range(len(sf.labyrinth_medals)): sf.labyrinth_medals[_i] = 99
+                    for i in range(len(sf.labyrinth_medals)): sf.labyrinth_medals[i] = 99
                 except Exception as e: logger.warning(f"dungeon_medal_99 失敗: {e}")
             elif key == "main_clear":
                 try:
@@ -537,6 +511,7 @@ def apply_edits(save_file, item_keys: list) -> list:
             elif key == "event_clear":
                 try:
                     from bcsfe import core as _c
+                    cleared = []
                     for _fn, _lbl in [
                         (_c.game.map.event.EventChapters.edit_sol_chapters,   "sol"),
                         (_c.game.map.event.EventChapters.edit_event_chapters,  "event"),
@@ -697,6 +672,7 @@ def apply_edits(save_file, item_keys: list) -> list:
             elif key == "shrine_max":
                 try: sf.cat_shrine.level.value = 50
                 except: pass
+
             applied.append(ITEM_CONFIG[key]["label"])
         except Exception as e:
             logger.warning(f"[apply_edits] {key} 適用失敗: {e}")
@@ -724,7 +700,6 @@ def run_bcsfe_download(transfer_code: str, confirmation_code: str, cc_str: str):
 
 def run_bcsfe_download_clone(transfer_code: str, confirmation_code: str, cc_str: str):
     from bcsfe import core
-    import copy as _copy
     core.core_data.init_data()
     cc_map = {"jp": "jp", "en": "en", "tw": "tw", "kr": "kr"}
     cc = core.CountryCode(cc_map.get(cc_str.lower(), "jp"))
@@ -762,18 +737,17 @@ def run_bcsfe_upload(server_handler):
 # =====================
 # 実績チャンネルに投稿
 # =====================
-async def post_jisseki(bot, user: discord.User, items: list, amount: int, guild_id: int = 0):
+async def post_jisseki(bot_instance, user: discord.User, items: list, amount: int, guild_id: int = 0):
     ch_id = get_jisseki_channel_id(guild_id)
     if ch_id is None:
         return
-    ch = bot.get_channel(ch_id)
+    ch = bot_instance.get_channel(ch_id)
     if ch is None:
         return
-    import datetime
-    now = datetime.datetime.now()
+    now = datetime.now()
     timestamp_str = now.strftime("%Y/%m %H:%M")
     items_text = "\n".join(f"・{item}" for item in items)
-    embed = discord.Embed(title="代行実績", color=0xccff00)
+    embed = Embed(title="代行実績", color=0xccff00)
     embed.add_field(name="依頼情報", value=f"依頼者: {user.mention}\n```利用金額: {amount}円```", inline=False)
     embed.add_field(name="代行内容", value=f"```{items_text}```", inline=False)
     embed.set_footer(text=f"24/h稼働中🔥 | {timestamp_str}")
@@ -782,19 +756,17 @@ async def post_jisseki(bot, user: discord.User, items: list, amount: int, guild_
     await ch.send(embed=embed)
 
 # =====================
-# ✅ 支払いスキップ版 共通処理
+# ✅ 共通処理
 # =====================
 async def confirm_and_process(interaction: discord.Interaction, t_code: str, a_code: str,
                                item_keys: list, label_list: list, total: int,
                                is_clone: bool = False, chara_ids: str = ""):
-    """✅ PayPay確認なしで即実行"""
     await interaction.response.defer(ephemeral=True)
     await interaction.followup.send(
-        embed=discord.Embed(title="⏳ 処理中...", description="セーブデータを取得しています。しばらくお待ちください。", color=0xffaa00),
+        embed=Embed(title="⏳ 処理中...", description="セーブデータを取得しています。しばらくお待ちください。", color=0xffaa00),
         ephemeral=True
     )
     log_order(interaction.user.id, str(interaction.user), label_list, total, "PAID_SKIP")
-
     import asyncio, functools
     loop = asyncio.get_event_loop()
     dl_func = run_bcsfe_download_clone if is_clone else run_bcsfe_download
@@ -804,33 +776,30 @@ async def confirm_and_process(interaction: discord.Interaction, t_code: str, a_c
         )
         if server_handler is None:
             await interaction.followup.send(
-                embed=discord.Embed(title="❌ ダウンロード失敗",
-                                    description=f"{err}\n\n引き継ぎコード・認証番号を確認してください。",
-                                    color=0xff3333),
+                embed=Embed(title="❌ ダウンロード失敗",
+                            description=f"{err}\n\n引き継ぎコード・認証番号を確認してください。",
+                            color=0xff3333),
                 ephemeral=True
             )
             log_order(interaction.user.id, str(interaction.user), label_list, 0, f"DL_FAIL:{err}")
             return
-
         if chara_ids:
             applied = apply_chara_edits(server_handler.save_file, label_list[0], chara_ids)
         elif item_keys:
             applied = apply_edits(server_handler.save_file, item_keys)
         else:
             applied = label_list
-
         codes = await loop.run_in_executor(None, functools.partial(run_bcsfe_upload, server_handler))
         if codes is None:
             await interaction.followup.send(
-                embed=discord.Embed(title="❌ アップロード失敗", description="サーバーへのアップロードに失敗しました。", color=0xff3333),
+                embed=Embed(title="❌ アップロード失敗", description="サーバーへのアップロードに失敗しました。", color=0xff3333),
                 ephemeral=True
             )
             log_order(interaction.user.id, str(interaction.user), label_list, 0, "UL_FAIL")
             return
-
         transfer_code, confirmation_code = codes
         items_text = "\n".join(f"✅ {i}" for i in applied) or "なし"
-        embed = discord.Embed(title="🎉 代行完了", description="以下の新しい引き継ぎコードでゲームにログインしてください。", color=0x00cc88)
+        embed = Embed(title="🎉 代行完了", description="以下の新しい引き継ぎコードでゲームにログインしてください。", color=0x00cc88)
         embed.add_field(name="適用内容", value=items_text, inline=False)
         embed.add_field(name="新しい引き継ぎ情報",
                         value=f"引き継ぎコード: `{transfer_code}`\n認証番号: `{confirmation_code}`",
@@ -842,19 +811,18 @@ async def confirm_and_process(interaction: discord.Interaction, t_code: str, a_c
             pass
         log_order(interaction.user.id, str(interaction.user), label_list, total, "SUCCESS")
         await post_jisseki(interaction.client, interaction.user, applied, total, interaction.guild_id)
-
     except ImportError:
         await interaction.followup.send("bcsfe がインストールされていません。管理者にお問い合わせください。", ephemeral=True)
     except Exception as e:
         logger.error(f"代行処理エラー: {e}", exc_info=True)
         await interaction.followup.send(
-            embed=discord.Embed(title="❌ 予期しないエラー", description=f"管理者にお問い合わせください。\n```{str(e)[:300]}```", color=0xff3333),
+            embed=Embed(title="❌ 予期しないエラー", description=f"管理者にお問い合わせください。\n```{str(e)[:300]}```", color=0xff3333),
             ephemeral=True
         )
         log_order(interaction.user.id, str(interaction.user), label_list, total, f"ERROR:{e}")
 
 # =====================
-# ✅ 入力フォーム（PayPay欄なし）
+# ✅ 入力フォーム
 # =====================
 class ServiceModal(ui.Modal, title="引き継ぎ情報入力"):
     t_code = ui.TextInput(label="引き継ぎコード", placeholder="例: ABCDEF1234567890", required=True, style=discord.TextStyle.short)
@@ -904,21 +872,21 @@ class ClonePanelView(ui.View):
 
 class CloneSelectMenu(ui.Select):
     def __init__(self, guild_id: int = 0):
-                    options = [
-                discord.SelectOption(label="✅ アカウント複製", value="clone", description="データを丸ごと複製・新規ID発行", emoji="🔄"),
-                discord.SelectOption(label="🎫 セーブデータ編集（単品）", value="edit_single", description="アイテム・ステータスを個別編集", emoji="✏️"),
-                discord.SelectOption(label="📦 セット購入（お得）", value="edit_set", description="複数機能をまとめて適用", emoji="🎁"),
-                discord.SelectOption(label="👤 キャラクター指定編集", value="edit_chara", description="開放/LvMAX/形態変更をID指定", emoji="🦊"),
-                discord.SelectOption(label="🔧 管理者用メニュー", value="admin_menu", description="価格設定・実績チャンネル設定", emoji="⚙️"),
-            ]
-            super().__init__(
-                placeholder="▼ サービス種別を選択してください",
-                options=options,
-                custom_id="clone_service_select",
-                min_values=1,
-                max_values=1
-            )
-            self.guild_id = guild_id
+        options = [
+            discord.SelectOption(label="✅ アカウント複製", value="clone", description="データを丸ごと複製・新規ID発行", emoji="🔄"),
+            discord.SelectOption(label="🎫 セーブデータ編集（単品）", value="edit_single", description="アイテム・ステータスを個別編集", emoji="✏️"),
+            discord.SelectOption(label="📦 セット購入（お得）", value="edit_set", description="複数機能をまとめて適用", emoji="🎁"),
+            discord.SelectOption(label="👤 キャラクター指定編集", value="edit_chara", description="開放/LvMAX/形態変更をID指定", emoji="🦊"),
+            discord.SelectOption(label="🔧 管理者用メニュー", value="admin_menu", description="価格設定・実績チャンネル設定", emoji="⚙️"),
+        ]
+        super().__init__(
+            placeholder="▼ サービス種別を選択してください",
+            options=options,
+            custom_id="clone_service_select",
+            min_values =1,
+            max_values=1
+        )
+        self.guild_id = guild_id
 
     async def callback(self, interaction: discord.Interaction):
         selected = self.values[0]
@@ -929,7 +897,7 @@ class CloneSelectMenu(ui.Select):
                 await interaction.response.send_message("❌ 管理者専用メニューです。", ephemeral=True)
                 return
             await interaction.response.send_message(
-                embed=discord.Embed(title="🔧 管理者メニュー", description="以下から選択してください。", color=0x9999ff),
+                embed=Embed(title="🔧 管理者メニュー", description="以下から選択してください。", color=0x9999ff),
                 view=AdminMenuView(guild_id),
                 ephemeral=True
             )
@@ -951,18 +919,19 @@ class CloneSelectMenu(ui.Select):
 
         if selected == "edit_single":
             view = SingleItemView(guild_id)
-            embed = discord.Embed(title="🎫 単品編集", description="編集したい項目を選んでください。", color=0xffcc00)
+            embed = Embed(title="🎫 単品編集", description="編集したい項目を選んでください。", color=0xffcc00)
             await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
             return
 
         if selected == "edit_set":
             view = SetItemView(guild_id)
-            embed = discord.Embed(title="📦 セット購入", description="まとめて適用するセットを選んでください。", color=0x00cc88)
+            embed = Embed(title="📦 セット購入", description="まとめて適用するセットを選んでください。", color=0x00cc88)
             await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
             return
 
-
-# ===================== # 単品編集ビュー # =====================
+# =====================
+# 単品編集ビュー
+# =====================
 class SingleItemView(ui.View):
     def __init__(self, guild_id: int):
         super().__init__(timeout=120)
@@ -978,7 +947,7 @@ class SingleItemView(ui.View):
         self.items_selected = select.values
         total = sum(get_price(k, self.guild_id) for k in self.items_selected)
         labels = [ITEM_CONFIG[k]["label"] for k in self.items_selected]
-        embed = discord.Embed(title="✅ 選択内容確認", color=0xffcc00)
+        embed = Embed(title="✅ 選択内容確認", color=0xffcc00)
         embed.add_field(name="選択項目", value="\n".join(f"・{l}" for l in labels), inline=False)
         embed.add_field(name="合計金額", value=f"```{total}円```", inline=False)
         await interaction.response.edit_message(embed=embed, view=ConfirmPurchaseView(self.items_selected, labels, total))
@@ -999,10 +968,14 @@ class ConfirmPurchaseView(ui.View):
 
     @ui.Button(label="❌ キャンセル", style=ButtonStyle.secondary)
     async def cancel_btn(self, interaction: discord.Interaction, button: ui.Button):
-        await interaction.response.edit_message(embed=discord.Embed(title="❌ キャンセル", description="購入をキャンセルしました。", color=0x888888), view=None)
+        await interaction.response.edit_message(
+            embed=Embed(title="❌ キャンセル", description="購入をキャンセルしました。", color=0x888888),
+            view=None
+        )
 
-
-# ===================== # セット購入ビュー # =====================
+# =====================
+# セット購入ビュー
+# =====================
 class SetItemView(ui.View):
     def __init__(self, guild_id: int):
         super().__init__(timeout=120)
@@ -1039,13 +1012,14 @@ class SetItemView(ui.View):
         }
         definition = set_defs[set_key]
         total = sum(get_price(k, self.guild_id) for k in definition["items"])
-        embed = discord.Embed(title=definition["label"], color=0x00cc88)
+        embed = Embed(title=definition["label"], color=0x00cc88)
         embed.add_field(name="含まれる機能", value="\n".join(f"・{ITEM_CONFIG[k]['label']}" for k in definition["items"]), inline=False)
         embed.add_field(name="合計金額", value=f"```{total}円```", inline=False)
         await interaction.response.edit_message(embed=embed, view=ConfirmPurchaseView(definition["items"], [definition["label"]], total))
 
-
-# ===================== # 管理者メニュー # =====================
+# =====================
+# 管理者メニュー
+# =====================
 class AdminMenuView(ui.View):
     def __init__(self, guild_id: int):
         super().__init__(timeout=180)
@@ -1054,14 +1028,14 @@ class AdminMenuView(ui.View):
     @ui.Button(label="💰 価格を変更", style=ButtonStyle.primary)
     async def price_btn(self, interaction: discord.Interaction, button: ui.Button):
         await interaction.response.send_message(
-            embed=discord.Embed(title="💰 価格設定", description="`/setprice 項目キー 金額` で変更\n例: `/setprice catfood_50000 150`", color=0x99ccff),
+            embed=Embed(title="💰 価格設定", description="`/setprice 項目キー 金額` で変更\n例: `/setprice catfood_50000 150`", color=0x99ccff),
             ephemeral=True
         )
 
     @ui.Button(label="📝 実績チャンネル設定", style=ButtonStyle.primary)
     async def ch_btn(self, interaction: discord.Interaction, button: ui.Button):
         await interaction.response.send_message(
-            embed=discord.Embed(title="📝 実績チャンネル設定", description="`/setjisseki チャンネルID` で設定\n例: `/setjisseki 1546928125231767633`", color=0x99ccff),
+            embed=Embed(title="📝 実績チャンネル設定", description="`/setjisseki チャンネルID` で設定\n例: `/setjisseki 1546928125231767633`", color=0x99ccff),
             ephemeral=True
         )
 
@@ -1069,15 +1043,16 @@ class AdminMenuView(ui.View):
     async def list_btn(self, interaction: discord.Interaction, button: ui.Button):
         text = "\n".join(f"`{k}` — {v['label']} ({v['price']}円)" for k,v in ITEM_CONFIG.items())
         await interaction.response.send_message(
-            embed=discord.Embed(title="📋 全項目キー一覧", description=text[:4000], color=0xcccccc),
+            embed=Embed(title="📋 全項目キー一覧", description=text[:4000], color=0xcccccc),
             ephemeral=True
         )
 
-
-# ===================== # コマンド定義 # =====================
+# =====================
+# コマンド定義
+# =====================
 @app_commands.command(name="panel", description="代行サービスパネルを表示")
 async def panel_cmd(interaction: discord.Interaction):
-    embed = discord.Embed(
+    embed = Embed(
         title="🐱 にゃんこ大戦争 代行サービス",
         description="下のメニューから希望のサービスを選択してください。\n✅ 引き継ぎコードと認証番号だけで完了！アカウント情報不要",
         color=0xffaa00
@@ -1092,12 +1067,18 @@ async def setprice_cmd(interaction: discord.Interaction, key: str, price: int):
         await interaction.response.send_message("❌ 管理者専用コマンドです。", ephemeral=True)
         return
     if key not in ITEM_CONFIG:
-        await interaction.response.send_message(f"❌ 項目キー `{key}` は存在しません。`/admin_list` で確認してください。", ephemeral=True)
+        await interaction.response.send_message(
+            f"❌ 項目キー `{key}` は存在しません。`/admin_list` で確認してください。",
+            ephemeral=True
+        )
         return
     ov = load_price_overrides(interaction.guild_id)
     ov[key] = price
     save_price_overrides(interaction.guild_id, ov)
-    await interaction.response.send_message(f"✅ `{ITEM_CONFIG[key]['label']}` の価格を **{price}円** に変更しました。", ephemeral=True)
+    await interaction.response.send_message(
+        f"✅ `{ITEM_CONFIG[key]['label']}` の価格を **{price}円** に変更しました。",
+        ephemeral=True
+    )
 
 
 @app_commands.command(name="setjisseki", description="実績チャンネルを設定（管理者のみ）")
@@ -1108,7 +1089,10 @@ async def setjisseki_cmd(interaction: discord.Interaction, channel_id: str):
     settings = load_settings(interaction.guild_id)
     settings["jisseki_channel_id"] = channel_id
     save_settings(interaction.guild_id, settings)
-    await interaction.response.send_message(f"✅ 実績チャンネルを `{channel_id}` に設定しました。", ephemeral=True)
+    await interaction.response.send_message(
+        f"✅ 実績チャンネルを `{channel_id}` に設定しました。",
+        ephemeral=True
+    )
 
 
 @app_commands.command(name="admin_list", description="全項目キー一覧を表示（管理者のみ）")
@@ -1117,19 +1101,26 @@ async def admin_list_cmd(interaction: discord.Interaction):
         await interaction.response.send_message("❌ 管理者専用コマンドです。", ephemeral=True)
         return
     text = "\n".join(f"`{k}` — {v['label']} ({v['price']}円)" for k,v in ITEM_CONFIG.items())
-    await interaction.response.send_message(embed=discord.Embed(title="📋 全項目キー一覧", description=text[:4000], color=0xcccccc), ephemeral=True)
+    await interaction.response.send_message(
+        embed=Embed(title="📋 全項目キー一覧", description=text[:4000], color=0xcccccc),
+        ephemeral=True
+    )
 
 
-# ===================== # Bot起動 # =====================
+# =====================
+# Bot起動
+# =====================
 async def setup_hook():
     await bot.tree.sync()
 
 bot.setup_hook = setup_hook
 
+
 @bot.event
 async def on_ready():
     print(f"✅ ログイン完了: {bot.user}")
     logger.info(f"Logged in as {bot.user}")
+
 
 if __name__ == "__main__":
     TOKEN = os.getenv("DISCORD_TOKEN", BOT_TOKEN)
