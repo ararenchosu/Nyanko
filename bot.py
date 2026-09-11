@@ -28,7 +28,7 @@ if _os.path.exists(_pp_path):
     _pp_spec = _ilu.spec_from_file_location('paypayu', _pp_path)
     paypayu = _ilu.module_from_spec(_pp_spec)
     _pp_spec.loader.exec_module(paypayu)
-    PAYPAY_AVAILABLE = True
+    PAYPAY_AVAILABLE = Fales
 else:
     try:
         import paypayu
