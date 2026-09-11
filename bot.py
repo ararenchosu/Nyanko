@@ -9,10 +9,19 @@ import logging
 from datetime import datetime, timedelta, timezone
 import bcsfe
 import bcsfe.core
-if not hasattr(bcsfe.core.core_data, 'local_manager'):
-    bcsfe.core.core_data.local_manager = type('obj', (object,), {
-        'get_key': lambda self, k, **kw: k
-    })()
+
+class DummyManager:
+    def get_key(self, key, **kw): return key
+    def get_color(self, name): return ""
+    def __getattr__(self, name): return lambda *a, **kw: ""
+
+core_data = bcsfe.core.core_data
+if not hasattr(core_data, 'local_manager'):
+    core_data.local_manager = DummyManager()
+if not hasattr(core_data, 'theme_manager'):
+    core_data.theme_manager = DummyManager()
+if not hasattr(core_data, 'config'):
+    core_data.config = {}
 # ======================================================
 # ✅ 設定
 # ======================================================
