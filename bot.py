@@ -1115,27 +1115,30 @@ async def admin_list_cmd(interaction: discord.Interaction):
         embed=Embed(title="📋 全項目キー一覧", description=text[:4000], color=0xcccccc),
         ephemeral=True
     )
-
 # =====================
 # ✅ Bot起動
 # =====================
 async def setup_hook():
+    # ✅ コマンド登録
     bot.tree.add_command(panel_cmd)
     bot.tree.add_command(setprice_cmd)
     bot.tree.add_command(setjisseki_cmd)
     bot.tree.add_command(admin_list_cmd)
+    # ✅ await はこの中に入れる
     await bot.tree.sync()
 
-bot.setup_hook = setup_hook
+bot.setup_hook = setup_hook  # 関数を登録するだけ、ここに await は不要
+
 
 @bot.event
 async def on_ready():
     print(f"✅ ログイン完了: {bot.user}")
     logger.info(f"Logged in as {bot.user}")
 
+
 if __name__ == "__main__":
     TOKEN = os.getenv("DISCORD_TOKEN")
     if not TOKEN:
         logger.error("❌ DISCORD_TOKEN が設定されていません！環境変数を確認してください。")
         exit(1)
-    bot.run(TOKEN)
+    bot.run(TOKEN)  # ✅ ここにも await は不要
