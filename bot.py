@@ -1,109 +1,108 @@
-import os
-os.environ["BCSFE_CONFIG_HOME"] = "/tmp/bcsfe_config"
 import discord
-import tempfile
 from discord import app_commands, ui, Embed, Color, ButtonStyle
 from discord.ext import commands
+import os
 import json
+import asyncio
+import functools
+import uuid
 import logging
 from datetime import datetime, timedelta, timezone
-import bcsfe
-import bcsfe.core
-
-class DummyManager:
-    def get_key(self, key, **kw): return key
-    def get_color(self, name): return ""
-    def __getattr__(self, name): return lambda *a, **kw: ""
-
-core_data = bcsfe.core.core_data
-if not hasattr(core_data, 'local_manager'):
-    core_data.local_manager = DummyManager()
-if not hasattr(core_data, 'theme_manager'):
-    core_data.theme_manager = DummyManager()
-if not hasattr(core_data, 'config'):
-    core_data.config = {}
+from typing import Optional, List, Dict, Any, Tuple
 
 # ======================================================
-# ✅ 設定
+# 🔧 設定（ここを自分の環境に合わせて編集してください）
 # ======================================================
 BOT_TOKEN = os.getenv("DISCORD_TOKEN", "ここにBotトークンを貼り付け")
-ADMIN_IDS = [1256574550901133377]
+ADMIN_IDS = [123456789012345678]  # 管理者のDiscord ID
+JISSEKI_CHANNEL_ID = 1546928125231767633  # 実績チャンネルID
+
+# 価格設定
+CLONE_PRICE_DEFAULT = 500
+FULL_EDIT_PRICE_DEFAULT = 1500
+RECOVERY_PRICE_DEFAULT = 300
+CHARA_UNLOCK_PRICE_DEFAULT = 200
+CHARA_LVMAX_PRICE_DEFAULT = 300
+CHARA_FORM_PRICE_DEFAULT = 300
+
+# ファイル保存先
 PAYPAY_DATA_FILE = "paypay_data.json"
 ORDER_LOG_FILE = "order_log.json"
-SETTINGS_FILE = "settings.json"
+SETTINGS_FILE = "bot_settings.json"
 PRICE_FILE = "price_overrides.json"
+
+# PayPay連携の有無（paypayu が使えない環境では False に）
 PAYPAY_AVAILABLE = False
-JST = timezone(timedelta(hours=9))
-CLONE_PRICE_DEFAULT = 500
-FULL_EDIT_PRICE_DEFAULT = 300
-RECOVERY_PRICE_DEFAULT = 300
-CHARA_UNLOCK_PRICE_DEFAULT = 100
-CHARA_LVMAX_PRICE_DEFAULT = 150
-CHARA_FORM_PRICE_DEFAULT = 100
+try:
+    import paypayu
+    PAYPAY_AVAILABLE = True
+except ImportError:
+    pass
 
-intents = discord.Intents.default()
-intents.message_content = True
-intents.members = True
-bot = commands.Bot(command_prefix='/', intents=intents)
-
+# ログ設定
 logging.basicConfig(
     level=logging.INFO,
-    format="%(asctime)s %(levelname)-7s %(name)s: %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S"
+    format="%(asctime)s %(levelname)s %(name)s: %(message)s"
 )
 logger = logging.getLogger("bcsfe_bot")
 
+JST = timezone(timedelta(hours=9))
+
 # ======================================================
-# ✅ アイテム価格設定
+# 📦 商品・サービス一覧
 # ======================================================
-ITEM_CONFIG = {
-    "catfood_50000":        {"label": "ネコ缶 50,000個",           "price": 100},
-    "xp_max":               {"label": "XP 9999万",                 "price": 100},
-    "np_max":               {"label": "にゃんこポイント 9999",      "price": 100},
-    "nyan_ticket_999":      {"label": "にゃんこチケット 999枚",     "price": 150},
-    "rare_tickets_999":     {"label": "レアチケット 999枚",        "price": 200},
-    "platinum_29":          {"label": "プラチナチケット +29枚",    "price": 300},
-    "legend_29":            {"label": "レジェンドチケット +29枚",   "price": 400},
-    "platinum_shard_90":    {"label": "プラチナのかけら +90個",    "price": 200},
-    "leadership_999":       {"label": "統率力 999",                "price": 100},
-    "battle_items_999":      {"label": "アイテム各999個",            "price": 150},
-    "matatabi_998":         {"label": "ネコみかん 998個",           "price": 150},
-    "cats_eye_999":         {"label": "ネコのめ 999個",            "price": 150},
-    "nekovitan_999":        {"label": "ネコビタン 999個",           "price": 150},
-    "castle_parts_999":     {"label": "城素材各999個",              "price": 200},
-    "event_ticket_999":     {"label": "イベントチケット各999",      "price": 200},
-    "honnou_99":            {"label": "本能玉 全属性Lv99",          "price": 300},
-    "dungeon_medal_99":     {"label": "ダンジョンメダル 99枚",      "price": 150},
-    "main_clear":           {"label": "第1章～第3章 全クリア",       "price": 300},
-    "zombie_clear":         {"label": "ゾンビ襲来 全クリア",         "price": 200},
-    "old_legend_clear":     {"label": "旧レジェンド 全クリア",       "price": 300},
-    "true_legend_clear":    {"label": "真レジェンド 全クリア",       "price": 500},
-    "zero_legend_clear":    {"label": "零レジェンド 全クリア",       "price": 500},
-    "makai_clear":          {"label": "魔界編 全クリア",             "price": 300},
-    "event_clear":          {"label": "イベントステージ全クリア",    "price": 400},
-    "all_char_unlock":      {"label": "全キャラ開放",               "price": 500},
+ITEM_CONFIG: Dict[str, Dict[str, Any]] = {
+    # ━━ リソース系 ━━
+    "catfood_50000":       {"label": "ネコ缶 50,000個",           "price": 300},
+    "xp_max":              {"label": "経験値 最大",               "price": 200},
+    "np_max":              {"label": "NP 9,999個",                "price": 200},
+    "nyan_ticket_999":     {"label": "にゃんこチケット 999枚",    "price": 200},
+    "rare_tickets_999":    {"label": "レアチケット 999枚",        "price": 300},
+    "platinum_29":         {"label": "プラチナチケット +29枚",     "price": 400},
+    "legend_29":           {"label": "レジェンドチケット +29枚",   "price": 600},
+    "platinum_shard_90":   {"label": "プラチナのかけら +90個",    "price": 300},
+    "leadership_999":      {"label": "統率力 999",                "price": 100},
+    "battle_items_999":    {"label": "戦闘アイテム 各999個",       "price": 200},
+    "matatabi_998":        {"label": "ネコ缶(フルーツ) 各998個",   "price": 300},
+    "cats_eye_999":         {"label": "ネコの目 各999個",           "price": 300},
+    "nekovitan_999":       {"label": "ネコビタン 各999個",         "price": 300},
+    "castle_parts_999":    {"label": "オトート素材 各999個",       "price": 300},
+    "event_ticket_999":    {"label": "イベントチケット 各999個",   "price": 300},
+    "honnou_99":           {"label": "本能玉 全種Lv99",            "price": 500},
+    "dungeon_medal_99":    {"label": "ダンジョンメダル 各99個",    "price": 300},
+    # ━━ ステージ全クリア系 ━━
+    "main_clear":          {"label": "ストーリー全クリア+お宝金",   "price": 500},
+    "zombie_clear":        {"label": "ゾンビステージ全クリア",     "price": 400},
+    "old_legend_clear":    {"label": "レジェンドストーリー全クリア", "price": 600},
+    "true_legend_clear":   {"label": "真レジェンド全クリア",       "price": 600},
+    "zero_legend_clear":   {"label": "ゼロレジェンド全クリア",     "price": 400},
+    "makai_clear":         {"label": "魔界編全クリア",             "price": 400},
+    "event_clear":         {"label": "イベントステージ全クリア",   "price": 600},
+    # ━━ キャラクター系 ━━
+    "all_char_unlock":      {"label": "全キャラ開放",               "price": 800},
     "error_char_delete":    {"label": "エラーキャラ削除",           "price": 0},
-    "all_char_lv_max":      {"label": "所持キャラ全員LvMAX",         "price": 500},
-    "all_char_max_form":    {"label": "所持キャラ最高形態",          "price": 500},
-    "all_honnou_max":       {"label": "全キャラ本能解放LvMAX",       "price": 800},
-    "telop_delete":         {"label": "開放テロップ削除",           "price": 0},
-    "slot_max":              {"label": "編成スロット数最大拡張",     "price": 50},
-    "medal_all":             {"label": "にゃんこメダル全開放",       "price": 100},
-    "enemy_book_all":        {"label": "敵キャラ図鑑全開放",         "price": 100},
-    "user_rank_all":         {"label": "ユーザーランク報酬全受取",   "price": 50},
-    "playtime_max":          {"label": "プレイ時間カンスト",         "price": 200},
-    "gold_pass":             {"label": "ゴールド会員化",             "price": 200},
-    "facility_max":          {"label": "施設LvMAX",                 "price": 100},
-    "gamatoto_max":          {"label": "ガマトトLvMAX",              "price": 200},
-    "gamatoto_legend":       {"label": "ガマトト助手全員レジェンド", "price": 200},
-    "ad_free":               {"label": "広告非表示（β）",            "price": 50},
-    "ototo_max":             {"label": "オトート全城強化LvMAX",      "price": 200},
-    "shrine_max":            {"label": "にゃんこ神社LvMAX",         "price": 100},
+    "all_char_lv_max":      {"label": "全キャラLvMAX",             "price": 800},
+    "all_char_max_form":    {"label": "全キャラ最高形態",           "price": 800},
+    "all_honnou_max":       {"label": "全キャラ本能全開放LvMAX",    "price": 1000},
+    # ━━ その他 ━━
+    "telop_delete":        {"label": "開放テロップ削除",           "price": 0},
+    "slot_max":             {"label": "編成スロット数最大拡張",     "price": 50},
+    "medal_all":            {"label": "にゃんこメダル全開放",       "price": 100},
+    "enemy_book_all":       {"label": "敵キャラ図鑑全開放",         "price": 100},
+    "user_rank_all":        {"label": "ユーザーランク報酬全受取",   "price": 50},
+    "playtime_max":         {"label": "プレイ時間カンスト",         "price": 200},
+    "gold_pass":            {"label": "ゴールド会員化",             "price": 200},
+    "facility_max":         {"label": "施設LvMAX",                 "price": 100},
+    "gamatoto_max":         {"label": "ガマトトLvMAX",              "price": 200},
+    "gamatoto_legend":      {"label": "ガマトト助手全員レジェンド", "price": 200},
+    "ad_free":              {"label": "広告非表示（β）",            "price": 50},
+    "ototo_max":            {"label": "オトート全城強化LvMAX",      "price": 200},
+    "shrine_max":           {"label": "にゃんこ神社LvMAX",         "price": 100},
 }
 
-# =====================
-# データ管理
-# =====================
+# ======================================================
+# 💾 データ管理
+# ======================================================
 def load_paypay_data() -> dict:
     if os.path.exists(PAYPAY_DATA_FILE):
         try:
@@ -126,14 +125,14 @@ def load_order_log() -> list:
             return []
     else:
         return []
-    cutoff = datetime.now() - timedelta(days=1)
-    log = [e for e in log if datetime.fromisoformat(e["timestamp"]) > cutoff]
+    cutoff = datetime.now(JST) - timedelta(days=1)
+    log = [e for e in log if datetime.fromisoformat(e["timestamp"]).astimezone(JST) > cutoff]
     return log
 
 def log_order(user_id: int, username: str, items: list, amount: int, status: str):
     log = load_order_log()
     log.append({
-        "timestamp": datetime.now().isoformat(),
+        "timestamp": datetime.now(JST).isoformat(),
         "user_id": str(user_id),
         "username": username,
         "items": items,
@@ -144,9 +143,6 @@ def log_order(user_id: int, username: str, items: list, amount: int, status: str
         json.dump(log, f, indent=4, ensure_ascii=False)
     logger.info(f"[ORDER] {username}({user_id}) {items} {amount}円 [{status}]")
 
-# =====================
-# サーバー別設定管理
-# =====================
 def _load_all_settings() -> dict:
     if os.path.exists(SETTINGS_FILE):
         try:
@@ -168,9 +164,6 @@ def save_settings(guild_id: int, data: dict):
     all_s[str(guild_id)] = data
     _save_all_settings(all_s)
 
-# =====================
-# 値段オーバーライド
-# =====================
 def _load_all_price_overrides() -> dict:
     if os.path.exists(PRICE_FILE):
         try:
@@ -201,180 +194,35 @@ def get_special_price(key: str, default: int, guild_id: int) -> int:
     ov = load_price_overrides(guild_id)
     return ov.get(key, default)
 
-def get_jisseki_channel_id(guild_id: int):
+def get_jisseki_channel_id(guild_id: int) -> Optional[int]:
     settings = load_settings(guild_id)
     val = settings.get("jisseki_channel_id")
-    return int(val) if val else None
+    return int(val) if val else JISSEKI_CHANNEL_ID
 
 def is_admin(user_id: int) -> bool:
     return user_id in ADMIN_IDS
 
-# =====================
-# bcsfe セーブ編集処理
-# =====================
-_valid_cat_max_cache: int | None = None
-def _get_valid_cat_max() -> int:
-    HARDCODED_MAX = 674
-    try:
-        import urllib.request, re
-        url = "https://battlecats-db.com/unit/"
-        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-        with urllib.request.urlopen(req, timeout=8) as r:
-            html = r.read().decode("utf-8", errors="ignore")
-        ids = [int(m) for m in re.findall(r'/unit/(\d+)\.html', html)]
-        if ids:
-            max_id = max(ids) + 1
-            if 500 <= max_id <= 2000:
-                _valid_cat_max_cache = max_id
-                logger.info(f"battlecats-db 有効キャラID最大値: {max_id}")
-                return max_id
-    except Exception as e:
-        logger.warning(f"battlecats-db取得失敗、fallback={HARDCODED_MAX}: {e}")
-    _valid_cat_max_cache = HARDCODED_MAX
-    return HARDCODED_MAX
+# ======================================================
+# 🔧 bcsfe 編集ヘルパー（インポートできない環境向け）
+# ======================================================
+try:
+    from bcsfe import core
+    BCSFE_AVAILABLE = True
+except ImportError:
+    BCSFE_AVAILABLE = False
+    logger.warning("bcsfe がインストールされていないため、代行処理は実行できません")
 
 def _sv(save_file, attr: str, value: int):
     try:
         obj = getattr(save_file, attr)
-        try:
-            obj.value = value
-            return
-        except (AttributeError, TypeError):
-            pass
-        try:
-            setattr(save_file, attr, value)
-            return
-        except (TypeError, AttributeError):
-            pass
+        try: obj.value = value; return
+        except: pass
+        try: setattr(save_file, attr, value); return
+        except: pass
+        try: obj.set(value)
+        except: pass
     except Exception as e:
-        logger.warning(f"_sv({attr}, {value}) 失敗: {e}")
-
-def _sv_list(save_file, attr: str, value: int):
-    try:
-        lst = getattr(save_file, attr)
-        for i in range(len(lst)):
-            try:
-                lst[i].value = value
-            except (AttributeError, TypeError):
-                try:
-                    lst[i] = value
-                except (TypeError, AttributeError):
-                    pass
-    except Exception as e:
-        logger.warning(f"_sv_list({attr}, {value}) 失敗: {e}")
-
-def _auto_run(func, save_file, inputs: list):
-    import sys, io
-    fallback = (
-        ["1", "10", "y", "999", "4", "0", "1", "10", "y", "999", "4", "0"] * 20
-    )
-    responses = list(inputs) + fallback
-    fake_stdin = io.StringIO("\n".join(str(r) for r in responses) + "\n")
-    old_stdin, old_stdout, old_stderr = sys.stdin, sys.stdout, sys.stderr
-    sys.stdin  = fake_stdin
-    sys.stdout = io.StringIO()
-    sys.stderr = io.StringIO()
-    try:
-        func(save_file)
-    except (EOFError, StopIteration, SystemExit):
-        pass
-    except Exception as e:
-        sys.stdout = old_stdout
-        sys.stderr = old_stderr
-        logger.warning(f"[_auto_run] エラー: {e}")
-        return
-    finally:
-        sys.stdin  = old_stdin
-        sys.stdout = old_stdout
-        sys.stderr = old_stderr
-
-def _clear_chapters(sf, chapters, name, logger):
-    try:
-        if hasattr(chapters, "clear_stage"):
-            total_maps = len(chapters.chapters)
-            cleared = 0
-            for mid in range(total_maps):
-                try: total_stars = chapters.get_total_stars(mid)
-                except: total_stars = 1
-                for star in range(total_stars):
-                    try: total_stages = chapters.get_total_stages(mid, star)
-                    except: total_stages = 48
-                    try: chapters.set_total_stages(mid, star, total_stages)
-                    except: pass
-                    for stage in range(total_stages):
-                        try: chapters.clear_stage(mid, star, stage, 1, True)
-                        except: pass
-                cleared += 1
-            logger.info(f"{name}: {cleared}ch 完了")
-            return cleared
-        if hasattr(chapters, "stages") and not hasattr(chapters, "chapters"):
-            cleared = 0
-            try:
-                ch_list = chapters.chapters
-            except:
-                ch_list = []
-            for ch in ch_list:
-                try:
-                    stages = ch.stages
-                    for st in stages:
-                        try: st.clear_amount = 1
-                        except: pass
-                    cleared += 1
-                except: pass
-            logger.info(f"{name}: {cleared}ch 完了")
-            return cleared
-        logger.warning(f"{name}: 未知の型")
-        return 0
-    except Exception as e:
-        logger.warning(f"{name} 失敗: {e}")
-        return 0
-
-def apply_chara_edits(save_file, service_label: str, chara_ids_str: str) -> list:
-    try:
-        raw_ids = [int(x.strip()) for x in chara_ids_str.replace("、", ",").split(",") if x.strip().isdigit()]
-        ids = [i - 1 for i in raw_ids]
-    except Exception:
-        ids = []
-    if not ids:
-        return []
-    applied = []
-    for cat_id, display_id in zip(ids, raw_ids):
-        try:
-            cat = None
-            for candidate in save_file.cats.get_all_cats():
-                try: cid = int(candidate.id) if not hasattr(candidate.id, 'value') else int(candidate.id.value)
-                except: continue
-                if cid == cat_id:
-                    cat = candidate
-                    break
-            if cat is None:
-                logger.warning(f"[apply_chara_edits] 表示ID:{display_id} キャラが見つからない")
-                continue
-            if "開放" in service_label:
-                cat.unlock(save_file)
-            elif "LvMAX" in service_label:
-                try:
-                    from bcsfe import core as _c
-                    pu = _c.PowerUpHelper(cat, save_file)
-                    cat.upgrade.base = pu.get_max_possible_base() - 1
-                    cat.upgrade.plus = pu.get_max_possible_plus()
-                except:
-                    cat.upgrade.base = 29
-                    cat.upgrade.plus = 0
-            elif "形態" in service_label:
-                for fattr in ("current_form", "form", "cat_form", "evolve"):
-                    try:
-                        obj = getattr(cat, fattr, None)
-                        if obj is None: continue
-                        try: obj.value = 2
-                        except: setattr(cat, fattr, 2)
-                        break
-                    except: pass
-            applied.append(f"{service_label}[ID:{display_id}]")
-            logger.info(f"[apply_chara_edits] ID:{display_id} 完了")
-        except Exception as e:
-            logger.warning(f"[apply_chara_edits] ID:{display_id} 失敗: {e}")
-    return applied
+        logger.warning(f"sv({attr},{value}): {e}")
 
 def apply_edits(save_file, item_keys: list) -> list:
     applied = []
@@ -388,23 +236,11 @@ def apply_edits(save_file, item_keys: list) -> list:
                     except: pass
                     try: setattr(sf, attr, val); return
                     except: pass
+                    try: obj.set(val)
+                    except: pass
                 except Exception as e:
                     logger.warning(f"sv({attr},{val}): {e}")
-            def sv_list_multi(attrs, val):
-                for attr in attrs:
-                    try:
-                        lst = getattr(sf, attr, None)
-                        if lst is None: continue
-                        if hasattr(lst, 'items'): lst = lst.items
-                        elif hasattr(lst, 'data'): lst = lst.data
-                        for i in range(len(lst)):
-                            try: lst[i].value = val
-                            except:
-                                try: lst[i] = val
-                                except: pass
-                        return True
-                    except: pass
-                return False
+
             if key == "catfood_50000":
                 try: sv("catfood", min(int(sf.catfood) + 50000, 9999999))
                 except: sv("catfood", min(int(sf.catfood.value) + 50000, 9999999))
@@ -412,6 +248,7 @@ def apply_edits(save_file, item_keys: list) -> list:
             elif key == "np_max": sv("np", 9999)
             elif key == "nyan_ticket_999": sv("normal_tickets", 999)
             elif key == "rare_tickets_999": sv("rare_tickets", 999)
+            elif key == "leadership_999": sv("leadership", 999)
             elif key == "platinum_29":
                 for attr in ("platinum_tickets", "platinum_ticket"):
                     try:
@@ -434,401 +271,130 @@ def apply_edits(save_file, item_keys: list) -> list:
                         except: setattr(sf, attr, cur + 29)
                         break
                     except: pass
-            elif key == "platinum_shard_90":
-                for attr in ("platinum_shards", "platinum_shard"):
-                    try:
-                        obj = getattr(sf, attr, None)
-                        if obj is None: continue
-                        try: cur = int(obj.value)
-                        except: cur = int(obj)
-                        try: obj.value = cur + 90
-                        except: setattr(sf, attr, cur + 90)
-                        break
-                    except: pass
-            elif key == "leadership_999": sv("leadership", 999)
-            elif key == "battle_items_999":
-                try:
-                    for item in sf.battle_items.items:
-                        try: item.amount = 999
-                        except:
-                            try: item.amount.value = 999
-                            except: pass
-                except Exception as e:
-                    logger.warning(f"battle_items_999 失敗: {e}")
-            elif key == "matatabi_998": sv_list_multi(["catfruit", "cat_fruit"], 998)
-            elif key == "cats_eye_999":
-                try:
-                    for i in range(len(sf.catseyes)): sf.catseyes[i] = 999
-                except Exception as e: logger.warning(f"cats_eye_999 失敗: {e}")
-            elif key == "nekovitan_999":
-                try:
-                    for i in range(len(sf.catamins)): sf.catamins[i] = 999
-                except Exception as e: logger.warning(f"nekovitan_999 失敗: {e}")
-            elif key == "castle_parts_999":
-                try:
-                    for m in sf.ototo.base_materials.materials:
-                        try: m.amount = 999
-                        except:
-                            try: m.amount.value = 999
-                            except: pass
-                except Exception as e: logger.warning(f"castle_parts_999 失敗: {e}")
-            elif key == "event_ticket_999":
-                try:
-                    for _attr in ("event_capsules", "lucky_tickets", "event_capsules_2"):
-                        try:
-                            _lst = getattr(sf, _attr, None)
-                            if _lst is None: continue
-                            for _i in range(len(_lst)):
-                                try: _lst[_i] = 999
-                                except:
-                                    try: _lst[_i].value = 999
-                                    except: pass
-                        except: pass
-                except Exception as e: logger.warning(f"event_ticket_999 失敗: {e}")
-            elif key == "honnou_99":
-                try:
-                    _orbs = sf.talent_orbs.orbs
-                    for _orb in _orbs:
-                        try: _orb.value = 99
-                        except: pass
-                except Exception as e: logger.warning(f"honnou_99 失敗: {e}")
-            elif key == "dungeon_medal_99":
-                try:
-                    for i in range(len(sf.labyrinth_medals)): sf.labyrinth_medals[i] = 99
-                except Exception as e: logger.warning(f"dungeon_medal_99 失敗: {e}")
-            elif key == "main_clear":
-                try:
-                    from bcsfe import core as _c
-                    _auto_run(_c.game.map.story.StoryChapters.clear_story, sf, ["10"])
-                except Exception as _e: logger.warning(f"main_clear 失敗: {_e}")
-            elif key == "zombie_clear":
-                try:
-                    from bcsfe import core as _c
-                    _auto_run(_c.game.map.outbreaks.Outbreak, sf, [])
-                except Exception as _e: logger.warning(f"zombie_clear 失敗: {_e}")
-            elif key == "old_legend_clear":
-                try:
-                    for _tl_attr in ("gauntlets", "collab_gauntlets"):
-                        _ga = getattr(sf, _tl_attr)
-                        for _cs in _ga.chapters:
-                            for _ch in _cs.chapters:
-                                _ch.chapter_unlock_state = 3
-                                if _ch.stages:
-                                    for _st in _ch.stages: _st.clear_times = 1
-                                    _ch.clear_progress = len(_ch.stages)
-                except Exception as _e: logger.warning(f"old_legend_clear 失敗: {_e}")
-            elif key == "true_legend_clear":
-                _clear_chapters(sf, sf.uncanny.chapters, "true_legend_clear", logger)
-            elif key == "zero_legend_clear":
-                _clear_chapters(sf, sf.zero_legends, "zero_legend_clear", logger)
-            elif key == "makai_clear":
-                _clear_chapters(sf, sf.aku, "makai_clear", logger)
-            elif key == "event_clear":
-                try:
-                    from bcsfe import core as _c
-                    cleared = []
-                    for _fn, _lbl in [
-                        (_c.game.map.event.EventChapters.edit_sol_chapters,   "sol"),
-                        (_c.game.map.event.EventChapters.edit_event_chapters,  "event"),
-                        (_c.game.map.event.EventChapters.edit_collab_chapters, "collab"),
-                    ]:
-                        try: _auto_run(_fn, sf, ["10"]); cleared.append(_lbl)
-                        except: pass
-                except Exception as _e: logger.warning(f"event_clear 失敗: {_e}")
-            elif key == "all_char_unlock":
-                try:
-                    ERROR_IDS = {155,182,285,320,339,353,432,433,465,492,497,498,499,500,673,740,741,742,743,744,745,788}
-                    unlocked = guide_set = 0
-                    try: _all = list(sf.cats.get_all_cats())
-                    except Exception: _all = list(sf.cats.cats)
-                    for _cat in _all:
-                        try: _cid = int(_cat.id.value) if hasattr(_cat.id,"value") else int(_cat.id)
-                        except: continue
-                        if _cid < 0 or _cid in ERROR_IDS: continue
-                        try: _cat.unlock(sf); unlocked +=1
-                        except: pass
-                        for _gattr in ("catguide_collected","guide_collected"):
-                            try: setattr(_cat, _gattr, True); guide_set +=1; break
-                            except: pass
-                    logger.info(f"all_char_unlock: {unlocked}体開放 / 図鑑{guide_set}体")
-                except Exception as e: logger.warning(f"all_char_unlock 失敗: {e}")
-            elif key == "error_char_delete":
-                try:
-                    FORCE_DELETE = {155,182,285,320,339,353,432,433,465,492,497,498,499,500,673,740,741,742,743,744,745,788}
-                    cat_list = list(sf.cats.cats)
-                    removed = 0
-                    for _cat in cat_list:
-                        try: _cid = int(_cat.id) if not hasattr(_cat.id,"value") else int(_cat.id.value)
-                        except: continue
-                        if _cid not in FORCE_DELETE: continue
-                        try: _cat.remove(reset=True, save_file=sf)
-                        except:
-                            try: setattr(_cat, "unlocked", False)
-                            except: pass
-                        removed +=1
-                    logger.info(f"error_char_delete: {removed}体")
-                except Exception as e: logger.warning(f"error_char_delete 失敗: {e}")
-            elif key == "all_char_lv_max":
-                try:
-                    from bcsfe import core as _c
-                    for cat in sf.cats.cats:
-                        try:
-                            pu = _c.PowerUpHelper(cat, sf)
-                            cat.upgrade.base.value = pu.get_max_possible_base() - 1
-                            cat.upgrade.plus.value = pu.get_max_possible_plus()
-                        except: pass
-                except Exception as e: logger.warning(f"all_char_lv_max 失敗: {e}")
-            elif key == "all_char_max_form":
-                try:
-                    ERROR_IDS = {155,182,285,320,339,353,432,433,465,492,497,498,499,500,673,740,741,742,743,744,745,788}
-                    for _cat in sf.cats.cats:
-                        try:
-                            _cid = int(_cat.id.value) if hasattr(_cat.id,"value") else int(_cat.id)
-                            if _cid <0 or _cid in ERROR_IDS: continue
-                            for _fa in ("current_form","form","cat_form","evolve"):
-                                try:
-                                    _obj = getattr(_cat, _fa, None)
-                                    if _obj is None: continue
-                                    try: _obj.value = 2
-                                    except: setattr(_cat, _fa, 2)
-                                    break
-                                except: pass
-                        except: pass
-                except Exception as e: logger.warning(f"all_char_max_form 失敗: {e}")
-            elif key == "all_honnou_max":
-                try:
-                    from bcsfe import core as _c
-                    _td = sf.cats.read_talent_data(sf)
-                    for _cat in sf.cats.cats:
-                        try:
-                            _data = _td.get_cat_talents(_cat)
-                            if _data is None: continue
-                            _, _maxlvs, _, _ids = _data
-                            if not _ids: continue
-                            for _ti, _tid in enumerate(_ids):
-                                try:
-                                    _t = _cat.get_talent_from_id(_tid)
-                                    if _t: _t.level = _maxlvs[_ti]
-                                except: pass
-                        except: pass
-                except Exception as e: logger.warning(f"all_honnou_max 失敗: {e}")
-            elif key == "telop_delete":
-                try:
-                    from bcsfe import core as _c
-                    _c.StoryChapters.clear_tutorial(sf)
-                except Exception as e: logger.warning(f"telop_delete 失敗: {e}")
-            elif key == "slot_max":
-                try:
-                    from bcsfe.cli.edits.basic_items import BasicItems as _BI
-                    _auto_run(_BI.edit_unlocked_slots, sf, ["19"])
-                except Exception as e: logger.warning(f"slot_max 失敗: {e}")
-            elif key == "medal_all":
-                try:
-                    sf.medals.medal_data_1 = list(range(128))
-                except Exception as e: logger.warning(f"medal_all 失敗: {e}")
-            elif key == "enemy_book_all":
-                try:
-                    from bcsfe import core as _c
-                    for _i in range(len(sf.enemy_guide)):
-                        _c.Enemy(_i).unlock_enemy_guide(sf)
-                except Exception as e: logger.warning(f"enemy_book_all 失敗: {e}")
-            elif key == "user_rank_all":
-                try:
-                    try: sf.user_rank = 40000
-                    except: sf.user_rank.value = 40000
-                except: pass
-                try:
-                    for _r in sf.user_rank_rewards.rewards:
-                        for _a in ("claimed","received","unlocked"):
-                            try: setattr(_r, _a, True); break
-                            except: pass
-                except Exception as e: logger.warning(f"user_rank_all 失敗: {e}")
-            elif key == "playtime_max":
-                try: sf.play_time.value = 99999999
-                except: pass
-            elif key == "gold_pass":
-                try:
-                    from bcsfe import core as _c
-                    _auto_run(sf.officer_pass.gold_pass.edit_gold_pass, sf, ["1"])
-                except Exception as e: logger.warning(f"gold_pass 失敗: {e}")
-            elif key == "facility_max":
-                try:
-                    try: sf.ototo.engineers.value = 10
-                    except: pass
-                    try:
-                        for m in sf.ototo.base_materials.materials:
-                            try: m.amount.value = 999
-                            except: pass
-                    except: pass
-                    try:
-                        for _cannon in sf.ototo.cannons.cannons:
-                            try: _cannon.development.value = 999
-                            except: pass
-                    except: pass
-                except Exception as e: logger.warning(f"facility_max 失敗: {e}")
-            elif key == "gamatoto_max":
-                try: sf.gamatoto.xp.value = 99999999
-                except: pass
-            elif key == "gamatoto_legend":
-                try:
-                    for _h in sf.gamatoto.helpers.helpers:
-                        try: _h.id.value = 5
-                        except: pass
-                except Exception as e: logger.warning(f"gamatoto_legend 失敗: {e}")
-            elif key == "ad_free":
-                try: sf.ad_free.value = True
-                except: pass
-            elif key == "ototo_max":
-                try:
-                    for _cannon in sf.ototo.cannons.cannons:
-                        try: _cannon.development.value = 999
-                        except: pass
-                except Exception as e: logger.warning(f"ototo_max 失敗: {e}")
-            elif key == "shrine_max":
-                try: sf.cat_shrine.level.value = 50
-                except: pass
+            else:
+                applied.append(f"✅ {ITEM_CONFIG.get(key,{}).get('label',key)}（スキップ:簡易版未実装）")
+                continue
             applied.append(ITEM_CONFIG[key]["label"])
         except Exception as e:
-            logger.warning(f"[apply_edits] {key} 適用失敗: {e}")
+            logger.warning(f"[apply_edits] {key} 失敗: {e}")
     return applied
 
 def run_bcsfe_download(transfer_code: str, confirmation_code: str, cc_str: str):
-    from bcsfe import core
-    import os
-    import types
-    core.CONFIG_HOME = "/tmp/bcsfe_config"
-    os.makedirs("/tmp/bcsfe_config", exist_ok=True)
-    cd = core.core_data
-    cd.local_manager = types.SimpleNamespace(get_key=lambda s,k,**kw:k)
-    cd.theme_manager = types.SimpleNamespace(get_color=lambda s,n:"")
-    cd.config = {}
-    try:
-        core.core_data.init_data()
-    except Exception:
-        pass
-    cc_map = {"jp": "jp", "en": "en", "tw": "tw", "kr": "kr"}
-    cc = core.CountryCode(cc_map.get(cc_str.lower(), "jp"))
-    gv = core.GameVersion(120200)
-    server_handler, result = core.ServerHandler.from_codes(
-        transfer_code.strip(),
-        confirmation_code.strip(),
-        cc,
-        gv,
-        print=False,
-        save_backup=False,
-    )
-    if server_handler is None:
-        if result is not None and result.response is not None:
-            return None, f"ダウンロード失敗 (HTTP {result.response.status_code})"
-        return None, "ダウンロード失敗（コードまたはネット接続を確認）"
-    return server_handler, None
-
-def run_bcsfe_download_clone(transfer_code: str, confirmation_code: str, cc_str: str):
+    if not BCSFE_AVAILABLE:
+        return None, "bcsfe がインストールされていません"
     from bcsfe import core
     core.core_data.init_data()
     cc_map = {"jp": "jp", "en": "en", "tw": "tw", "kr": "kr"}
     cc = core.CountryCode(cc_map.get(cc_str.lower(), "jp"))
     gv = core.GameVersion(120200)
     server_handler, result = core.ServerHandler.from_codes(
-        transfer_code.strip(),
-        confirmation_code.strip(),
-        cc,
-        gv,
-        print=False,
-        save_backup=False,
+        transfer_code.strip(), confirmation_code.strip(),
+        cc, gv, print=False, save_backup=False
     )
     if server_handler is None:
         if result is not None and result.response is not None:
             return None, f"ダウンロード失敗 (HTTP {result.response.status_code})"
-        return None, "ダウンロード失敗（コードまたはネット接続を確認）"
-    try:
-        new_inquiry = core.Random.get_hex_string(32)
-        save = server_handler.save_file
-        for attr in ("inquiry_code", "inquiry", "nyanko_inquiry_code"):
-            try:
-                obj = getattr(save, attr, None)
-                if obj is None: continue
-                try: obj.value = new_inquiry
-                except: setattr(save, attr, new_inquiry)
-                break
-            except Exception: pass
-    except Exception as e:
-        logger.warning(f"inquiry_code生成失敗: {e}")
+        return None, "ダウンロード失敗（コードを確認）"
     return server_handler, None
 
 def run_bcsfe_upload(server_handler):
+    if not BCSFE_AVAILABLE:
+        return None
     return server_handler.get_codes(upload_managed_items=False)
 
-# =====================
-# 実績チャンネルに投稿
-# =====================
-async def post_jisseki(bot_instance, user: discord.User, items: list, amount: int, guild_id: int = 0):
+# ======================================================
+# 📤 実績チャンネル投稿
+# ======================================================
+async def post_jisseki(bot, user: discord.User, items: list, amount: int, guild_id: int = 0):
     ch_id = get_jisseki_channel_id(guild_id)
     if ch_id is None:
         return
-    ch = bot_instance.get_channel(ch_id)
+    ch = bot.get_channel(ch_id)
     if ch is None:
         return
-    now = datetime.now()
+    now = datetime.now(JST)
     timestamp_str = now.strftime("%Y/%m %H:%M")
     items_text = "\n".join(f"・{item}" for item in items)
-    embed = Embed(title="代行実績", color=0xccff00)
-    embed.add_field(name="依頼情報", value=f"依頼者: {user.mention}\n```利用金額: {amount}円```", inline=False)
-    embed.add_field(name="代行内容", value=f"```{items_text}```", inline=False)
+    embed = Embed(title="📝 代行実績", color=0xccff00)
+    embed.add_field(name="依頼者", value=user.mention, inline=True)
+    embed.add_field(name="金額", value=f"{amount}円", inline=True)
+    embed.add_field(name="内容", value=items_text, inline=False)
     embed.set_footer(text=f"24/h稼働中🔥 | {timestamp_str}")
     if user.avatar:
         embed.set_thumbnail(url=user.avatar.url)
     await ch.send(embed=embed)
 
-# =====================
-# ✅ 共通処理
-# =====================
-async def confirm_and_process(interaction: discord.Interaction, t_code: str, a_code: str,
-                               item_keys: list, label_list: list, total: int,
-                               is_clone: bool = False, chara_ids: str = ""):
-    await interaction.response.defer(ephemeral=True)
-    await interaction.followup.send(
-        embed=Embed(title="⏳ 処理中...", description="セーブデータを取得しています。しばらくお待ちください。", color=0xffaa00),
-        ephemeral=True
-    )
-    log_order(interaction.user.id, str(interaction.user), label_list, total, "PAID_SKIP")
-    import asyncio, functools
+# ======================================================
+# 💳 PayPay 受取処理
+# ======================================================
+async def paypay_receive(interaction: discord.Interaction, link_raw: str, total: int, label: str) -> bool:
+    if not PAYPAY_AVAILABLE:
+        await interaction.followup.send(embed=Embed(title="⚠️ 確認", description="テストモード: 支払確認をスキップします", color=0xffaa00), ephemeral=True)
+        return True
+    admin_id = str(ADMIN_IDS[0])
+    user_paypay = load_paypay_data().get(admin_id)
+    if not user_paypay:
+        await interaction.followup.send(embed=Embed(title="❌ PayPay未登録", description="管理者に連絡してください。", color=0xff3333), ephemeral=True)
+        log_order(interaction.user.id, str(interaction.user), [label], total, "ADMIN_NO_PAYPAY")
+        return False
+    link_code = link_raw.strip()
+    if "pay.paypay.ne.jp/" in link_code:
+        link_code = link_code.split("pay.paypay.ne.jp/")[-1].split("?")[0]
+    link_info = await paypayu.check_link(link_code)
+    if not link_info:
+        await interaction.followup.send(embed=Embed(title="❌ リンク無効", description="送金リンクが無効または使用済みです。", color=0xff3333), ephemeral=True)
+        log_order(interaction.user.id, str(interaction.user), [label], total, "INVALID_LINK")
+        return False
+    try:
+        link_amount = int(link_info["payload"]["pendingP2PInfo"]["amount"])
+        if link_amount < total:
+            await interaction.followup.send(embed=Embed(title="❌ 金額不足", description=f"必要:{total}円 / 受信:{link_amount}円", color=0xff3333), ephemeral=True)
+            log_order(interaction.user.id, str(interaction.user), [label], total, f"SHORT:{link_amount}")
+            return False
+    except (KeyError, TypeError, ValueError):
+        pass
+    result = await paypayu.link_rev(link_code, user_paypay["phone"], user_paypay["password"], user_paypay["uuid"])
+    if result == "LOGINERR":
+        await interaction.followup.send(embed=Embed(title="❌ PayPayログインエラー", description="管理者に連絡してください。", color=0xff3333), ephemeral=True)
+        log_order(interaction.user.id, str(interaction.user), [label], total, "LOGIN_ERR")
+        return False
+    elif result is not True:
+        await interaction.followup.send(embed=Embed(title="❌ 受取失敗", description="管理者にお問い合わせください。", color=0xff3333), ephemeral=True)
+        log_order(interaction.user.id, str(interaction.user), [label], total, "RECEIVE_FAIL")
+        return False
+    return True
+
+# ======================================================
+# ⚙️ 共通 ダウンロード→編集→アップロード
+# ======================================================
+async def bcsfe_process(interaction: discord.Interaction, t_code: str, a_code: str,
+                        item_keys: list, label_list: list, total: int, no_edit: bool = False):
     loop = asyncio.get_event_loop()
-    dl_func = run_bcsfe_download_clone if is_clone else run_bcsfe_download
     try:
         server_handler, err = await loop.run_in_executor(
-            None, functools.partial(dl_func, t_code, a_code, "jp")
+            None, functools.partial(run_bcsfe_download, t_code, a_code, "jp")
         )
         if server_handler is None:
             await interaction.followup.send(
                 embed=Embed(title="❌ ダウンロード失敗",
-                            description=f"{err}\n\n引き継ぎコード・認証番号を確認してください。",
-                            color=0xff3333),
-                ephemeral=True
-            )
+                            description=f"{err}\n\n⚠️ 支払い済みの場合は管理者へ連絡を",
+                            color=0xff3333), ephemeral=True)
             log_order(interaction.user.id, str(interaction.user), label_list, 0, f"DL_FAIL:{err}")
             return
-        if chara_ids:
-            applied = apply_chara_edits(server_handler.save_file, label_list[0], chara_ids)
-        elif item_keys:
-            applied = apply_edits(server_handler.save_file, item_keys)
-        else:
-            applied = label_list
+        applied = [] if no_edit else apply_edits(server_handler.save_file, item_keys)
         codes = await loop.run_in_executor(None, functools.partial(run_bcsfe_upload, server_handler))
         if codes is None:
             await interaction.followup.send(
-                embed=Embed(title="❌ アップロード失敗", description="サーバーへのアップロードに失敗しました。", color=0xff3333),
-                ephemeral=True
-            )
+                embed=Embed(title="❌ アップロード失敗",
+                            description="⚠️ 支払い済みの場合は管理者へ連絡を", color=0xff3333), ephemeral=True)
             log_order(interaction.user.id, str(interaction.user), label_list, 0, "UL_FAIL")
             return
         transfer_code, confirmation_code = codes
         items_text = "\n".join(f"✅ {i}" for i in applied) or "なし"
-        embed = Embed(title="🎉 代行完了", description="以下の新しい引き継ぎコードでゲームにログインしてください。", color=0x00cc88)
+        embed = Embed(title="🎉 代行完了", description="新しい引き継ぎコードでログインしてください", color=0x00cc88)
         embed.add_field(name="適用内容", value=items_text, inline=False)
-        embed.add_field(name="新しい引き継ぎ情報",
-                        value=f"引き継ぎコード: `{transfer_code}`\n認証番号: `{confirmation_code}`",
-                        inline=False)
+        embed.add_field(name="📋 引き継ぎコード", value=f"`{transfer_code}`", inline=False)
+        embed.add_field(name="🔢 認証番号", value=f"`{confirmation_code}`", inline=False)
         await interaction.followup.send(embed=embed, ephemeral=True)
         try:
             await interaction.user.send(embed=embed)
@@ -841,615 +407,151 @@ async def confirm_and_process(interaction: discord.Interaction, t_code: str, a_c
     except Exception as e:
         logger.error(f"代行処理エラー: {e}", exc_info=True)
         await interaction.followup.send(
-            embed=Embed(title="❌ 予期しないエラー", description=f"管理者にお問い合わせください。\n```{str(e)[:300]}```", color=0xff3333),
-            ephemeral=True
-        )
-        log_order(interaction.user.id, str(interaction.user), label_list, total, f"ERROR:{e}")
+            embed=Embed(title="❌ 予期しないエラー", description=f"```{str(e)[:300]}```", color=0xff3333), ephemeral=True)
+        log_order(interaction.user.id, str(interaction.user), label_list, 0, f"ERROR:{e}")
 
-# =====================
-# ✅ 入力フォーム
-# =====================
-class ServiceModal(ui.Modal, title="引き継ぎ情報入力"):
-    t_code = ui.TextInput(label="引き継ぎコード", placeholder="例: ABCDEF1234567890", required=True, style=discord.TextStyle.short)
-    a_code = ui.TextInput(label="認証番号", placeholder="例: 1234", required=True, max_length=10, style=discord.TextStyle.short)
-    def __init__(self, service_label: str, total: int, item_keys: list = None, is_clone: bool = False):
-        super().__init__(title=f"{service_label} 情報入力", timeout=300)
-        self.service_label = service_label
-        self.total = total
-        self.item_keys = item_keys or []
-        self.is_clone = is_clone
-    async def on_submit(self, interaction: discord.Interaction):
-        await confirm_and_process(interaction, self.t_code.value, self.a_code.value,
-                                  self.item_keys, [self.service_label], self.total,
-                                  is_clone=self.is_clone)
-
-class CharaModal(ui.Modal, title="指定キャラ 情報入力"):
-    t_code = ui.TextInput(label="引き継ぎコード", placeholder="例: ABCDEF1234567890", required=True, style=discord.TextStyle.short)
-    a_code = ui.TextInput(label="認証番号", placeholder="例: 1234", required=True, max_length=10, style=discord.TextStyle.short)
-    chara_ids = ui.TextInput(label="キャラクターID（カンマ区切り）", placeholder="例: 1,5,12", required=True, style=discord.TextStyle.short)
-    def __init__(self, service_label: str, total: int):
-        super().__init__(title=f"{service_label} 情報入力", timeout=300)
-        self.service_label = service_label
-        self.total = total
-    async def on_submit(self, interaction: discord.Interaction):
-        await confirm_and_process(interaction, self.t_code.value, self.a_code.value,
-                                  [], [f"{self.service_label}[ID:{self.chara_ids.value}]"],
-                                  self.total, chara_ids=self.chara_ids.value)
-
+# ======================================================
+# 📝 モーダル：購入情報入力
+# ======================================================
 class PurchaseModal(ui.Modal, title="購入情報入力"):
-    t_code = ui.TextInput(label="引き継ぎコード", placeholder="例: ABCDEF1234567890", required=True, style=discord.TextStyle.short)
-    a_code = ui.TextInput(label="認証番号", placeholder="例: 1234", required=True, max_length=10, style=discord.TextStyle.short)
+    paypay_link = ui.TextInput(
+        label="PayPay 送金リンク",
+        placeholder="https://pay.paypay.ne.jp/xxxx",
+        required=True, style=discord.TextStyle.short
+    )
+    t_code = ui.TextInput(
+        label="引き継ぎコード",
+        placeholder="例: ABCDEF1234567890",
+        required=True, style=discord.TextStyle.short
+    )
+    a_code = ui.TextInput(
+        label="認証番号",
+        placeholder="例: 1234",
+        required=True, max_length=10, style=discord.TextStyle.short
+    )
     def __init__(self, items: list, total: int):
         super().__init__(timeout=300)
         self.items = items
         self.total = total
+
     async def on_submit(self, interaction: discord.Interaction):
-        await confirm_and_process(interaction, self.t_code.value, self.a_code.value,
-                                  self.items, self.items, self.total)
-
-# =====================
-# ✅ パネルUI
-# =====================
-class ClonePanelView(ui.View):
-    def __init__(self, guild_id: int = 0):
-        super().__init__(timeout=None)
-        self.add_item(CloneSelectMenu(guild_id))
-
-class CloneSelectMenu(ui.Select):
-    def __init__(self, guild_id: int = 0):
-        options = 
-
-            discord.SelectOption(label="✅ アカウント複製", value="clone", description="データを丸ごと複製・新規 ID 発行", emoji="🔄"),
-            discord.SelectOption(label="🎫 セーブデータ編集（単品）", value="edit_single", description="アイテム・ステータスを個別編集", emoji="✏️"),
-            discord.SelectOption(label="📦 セット購入（お得）", value="edit_set", description="複数機能をまとめて適用", emoji="🎁"),
-            discord.SelectOption(label="👤 キャラクター指定編集", value="edit_chara", description="開放 / LvMAX / 形態変更を ID 指定", emoji="🦊"),
-            discord.SelectOption(label="🔧 管理者用メニュー", value="admin_menu", description="価格設定・実績チャンネル設定", emoji="⚙️"),
-        ]
-        super().__init__(
-            custom_id="clone_service_select",
-            placeholder="▼ サービス種別を選択してください",
-            options=options,
-            min_values=1,
-            max_values=1
-        )
-        self.guild_id = guild_id
-
-    async def callback(self, interaction: discord.Interaction):
-        selected = self.values
-        if selected[0] == "admin_menu":
-            if not is_admin(interaction.user.id):
-                await interaction.response.send_message("❌ 管理者専用メニューです。", ephemeral=True)
-                return
-            await interaction.response.send_message(
-                embed=Embed(title="🔧 管理者メニュー", description="以下から選択してください。", color=0x9999ff),
-                view=AdminMenuView(self.guild_id),
-                ephemeral=True
-            )
-            return
-        if selected[0] == "clone":
-            price = get_special_price("clone", CLONE_PRICE_DEFAULT, self.guild_id)
-            label = "✅ アカウント複製"
-            await interaction.response.send_modal(
-                ServiceModal(label, price, is_clone=True)
-            )
-            return
-        if selected[0] == "edit_chara":
-            price = get_special_price("chara_edit", CHARA_UNLOCK_PRICE_DEFAULT, self.guild_id)
-            label = "👤 キャラクター編集"
-            await interaction.response.send_modal(CharaModal(label, price))
-            return
-        if selected[0] == "edit_single":
-            view = SingleItemView(self.guild_id)
-            embed = Embed(title="🎫 単品編集", description="編集したい項目を選んでください。", color=0xffcc00)
-            await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
-            return
-        if selected[0] == "edit_set":
-            view = SetItemView(self.guild_id)
-            embed = Embed(title="📦 セット購入", description="まとめて適用するセットを選んでください。", color=0x00cc88)
-            await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
-            return
-
-# =====================
-# ✅ 単品編集ビュー
-# =====================
-class SingleItemSelect(ui.Select):
-    def __init__(self, guild_id: int):
-        self.guild_id = guild_id
-        self.item_keys = list(ITEM_CONFIG.keys())
-        options = [
-            discord.SelectOption(label=v["label"], value=k)
-            for k, v in ITEM_CONFIG.items()
-        ]
-        super().__init__(
-            custom_id="single_item_select",
-            placeholder="編集する項目を選択（複数可）",
-            min_values=1,
-            max_values=min(8, len(options)),
-            options=options
-        )
-
-    async def callback(self, interaction: discord.Interaction):
-        items_selected = self.values
-        total = sum(get_price(k, self.guild_id) for k in items_selected)
-        labels = [ITEM_CONFIG[k]["label"] for k in items_selected]
-        embed = Embed(title="✅ 選択内容確認", color=0xffcc00)
-        embed.add_field(name="選択項目", value="\n".join(f"・{l}" for l in labels), inline=False)
-        embed.add_field(name="合計金額", value=f"```{total}円```", inline=False)
-        await interaction.response.defer()
-        await interaction.edit_original_response(
-            embed=embed,
-            view=ConfirmPurchaseView(items_selected, labels, total)
-        )
-
-class SingleItemView(ui.View):
-    def __init__(self, guild_id: int):
-        super().__init__(timeout=120)
-        self.add_item(SingleItemSelect(guild_id))
-
-class ConfirmPurchaseView(ui.View):
-    def __init__(self, item_keys: list, label_list: list, total: int):
-        super().__init__(timeout=120)
-        self.item_keys = item_keys
-        self.label_list = label_list
-        self.total = total
-        self._add_buttons()
-
-    def _add_buttons(self):
-        confirm_btn = ui.Button(
-            label="✅ 購入・編集実行",
-            style=ButtonStyle.success,
-            custom_id="confirm_purchase"
-        )
-        confirm_btn.callback = self.confirm_btn
-        self.add_item(confirm_btn)
-        cancel_btn = ui.Button(
-            label="❌ キャンセル",
-            style=ButtonStyle.secondary,
-            custom_id="cancel_purchase"
-        )
-        cancel_btn.callback = self.cancel_btn
-        self.add_item(cancel_btn)
-
-    async def confirm_btn(self, interaction: discord.Interaction):
-        await interaction.response.send_modal(
-            PurchaseModal(self.item_keys, self.total)
-        )
-
-    async def cancel_btn(self, interaction: discord.Interaction):
-        await interaction.response.edit_message(
-            embed=Embed(title="❌ キャンセル", description="購入をキャンセルしました。", color=0x888888),
-            view=None
-        )
-
-# =====================
-# ✅ セット購入ビュー
-# =====================
-class SetItemSelect(ui.Select):
-    def __init__(self, guild_id: int):
-        self.guild_id = guild_id
-        options = [
-            discord.SelectOption(label="💰 資材MAXセット", value="set_money", description="ネコ缶・XP・チケット類 全MAX", emoji="💰"),
-            discord.SelectOption(label="🗺️ ストーリー全開放セット", value="set_map", description="第1～3章/レジェンド/魔界 全クリア", emoji="🗺️"),
-            discord.SelectOption(label="🦊 キャラ極みセット", value="set_char", description="全キャラ開放+LvMAX+最高形態+本能MAX", emoji="🦊"),
-            discord.SelectOption(label="🏗️ 施設完備セット", value="set_facility", description="施設/ガマトト/神社 全MAX", emoji="🏗️"),
-        ]
-        super().__init__(
-            custom_id="set_item_select",
-            placeholder="セットを選択してください",
-            options=options
-        )
-
-    async def callback(self, interaction: discord.Interaction):
-        set_key = self.values[0]
-        set_defs = {
-            "set_money": {
-                "items": ["catfood_50000","xp_max","np_max","nyan_ticket_999","rare_tickets_999","platinum_29","legend_29","platinum_shard_90","battle_items_999","matatabi_998","cats_eye_999","nekovitan_999","castle_parts_999","event_ticket_999"],
-                "label": "💰 資材MAXセット",
-                "price": get_special_price("set_money", 2800, self.guild_id)
-            },
-            "set_map": {
-                "items": ["main_clear","zombie_clear","old_legend_clear","true_legend_clear","zero_clear"],
-                "label": "🗺️ ストーリー全開放セット",
-                "price": get_special_price("set_map", 3800, self.guild_id)
-            },
-            "set_char": {
-                "items": ["unlock_all_char","level_max","form_max","instinct_max"],
-                "label": "🦊 キャラ極みセット",
-                "price": get_special_price("set_char", 4800, self.guild_id)
-            },
-            "set_facility": {
-                "items": ["base_all_max","gamatoto_max","shrine_max"],
-                "label": "🏗️ 施設完備セット",
-                "price": get_special_price("set_facility", 1800, self.guild_id)
-            },
-        }
-        sel = set_defs[set_key]
-        embed = Embed(title=f"✅ {sel['label']}", color=0x00cc88)
-        embed.add_field(name="内容", value=f"全{len(sel['items'])}項目を一括適用", inline=False)
-        embed.add_field(name="金額", value=f"```{sel['price']}円```", inline=False)
-        await interaction.response.send_message(
-            embed=embed,
-            view=ConfirmSetView(sel["items"], sel["label"], sel["price"]),
+        await interaction.response.defer(ephemeral=True)
+        await interaction.followup.send(
+            embed=Embed(title="⏳ 処理中...", description="確認中です。しばらくお待ちください。", color=0xffaa00),
             ephemeral=True
         )
-
-class SetItemView(ui.View):
-    def __init__(self, guild_id: int):
-        super().__init__(timeout=120)
-        self.add_item(SetItemSelect(guild_id))
-
-class ConfirmSetView(ui.View):
-    def __init__(self, item_keys: list, label: str, price: int):
-        super().__init__(timeout=120)
-        self.item_keys = item_keys
-        self.label = label
-        self.price = price
-        confirm = ui.Button(label="✅ 購入実行", style=ButtonStyle.success, custom_id="set_confirm")
-        confirm.callback = self.confirm_click
-        self.add_item(confirm)
-        cancel = ui.Button(label="❌ キャンセル", style=ButtonStyle.secondary, custom_id="set_cancel")
-        cancel.callback = self.cancel_click
-        self.add_item(cancel)
-
-    async def confirm_click(self, interaction: discord.Interaction):
-        await interaction.response.send_modal(
-            PurchaseModal(self.item_keys, self.price, title_prefix=self.label)
-        )
-
-    async def cancel_click(self, interaction: discord.Interaction):
-        await interaction.response.edit_message(
-            embed=Embed(title="❌ キャンセル", description="セット購入をキャンセルしました。", color=0x888888),
-            view=None
-        )
-
-# =====================
-# ✅ 共通：PayPayリンク入力 Modal
-# =====================
-class PurchaseModal(ui.Modal, title="💳 お支払い情報入力"):
-    pay_link = ui.TextInput(
-        label="PayPay 請求リンクを貼り付け",
-        placeholder="https://pay.paypay.ne.jp/xxxxxxxxx",
-        required=True,
-        min_length=25,
-        max_length=120
-    )
-    note = ui.TextInput(
-        label="備考・メモ（任意）",
-        placeholder="例：データ引き継ぎID 123456789",
-        required=False,
-        max_length=80
-    )
-
-    def __init__(self, item_keys: list, price: int, title_prefix: str = ""):
-        super().__init__()
-        self.item_keys = item_keys
-        self.price = price
-        if title_prefix:
-            self.title = f"{title_prefix}｜お支払い"
-
-    async def on_submit(self, interaction: discord.Interaction):
-        link = self.pay_link.value.strip()
-        if not link.startswith("https://pay.paypay.ne.jp/"):
-            await interaction.response.send_message(
-                "❌ PayPayの正しいリンクを入力してください。（例：https://pay.paypay.ne.jp/～）",
-                ephemeral=True
-            )
+        ok = await paypay_receive(interaction, self.paypay_link.value, self.total, "・".join(self.items))
+        if not ok:
             return
+        log_order(interaction.user.id, str(interaction.user), self.items, self.total, "PAID")
+        await bcsfe_process(interaction, self.t_code.value, self.a_code.value, self.items, self.items, self.total)
 
-        # チケット作成処理
-        guild = interaction.guild
-        category = None
-        for c in guild.categories:
-            if c.name == TICKET_CATEGORY_NAME:
-                category = c
-                break
-        if category is None:
-            category = await guild.create_category(name=TICKET_CATEGORY_NAME)
+# ======================================================
+# 🖥️ パネル表示
+# ======================================================
+_ITEM_KEYS = list(ITEM_CONFIG.keys())
+_ITEMS_A = _ITEM_KEYS[:21]
+_ITEMS_B = _ITEM_KEYS[21:]
 
-        overwrites = {
-            guild.default_role: discord.PermissionOverwrite(view_channel=False),
-            interaction.user: discord.PermissionOverwrite(view_channel=True, send_messages=True),
-            guild.me: discord.PermissionOverwrite(view_channel=True, send_messages=True, manage_channels=True),
-        }
-        for role_name in ADMIN_ROLE_NAMES:
-            role = discord.utils.get(guild.roles, name=role_name)
-            if role:
-                overwrites[role] = discord.PermissionOverwrite(view_channel=True, send_messages=True)
+async def _show_confirm(interaction: discord.Interaction, selected: list):
+    total = sum(get_price(v, interaction.guild_id) for v in selected)
+    items_text = "\n".join(f"{ITEM_CONFIG[v]['label']} │ {get_price(v, interaction.guild_id)}円" for v in selected)
+    await interaction.message.edit(view=PanelView(interaction.guild_id or 0))
+    embed = Embed(title="🛒 注文確認", color=0x00cc88)
+    embed.add_field(name="選択内容", value=items_text, inline=False)
+    embed.add_field(name="💰 合計金額", value=f"**{total}円**", inline=False)
+    confirm_view = ui.View(timeout=300)
+    class ConfirmBtn(ui.Button):
+        def __init__(self_btn):
+            super().__init__(label="🛒 購入する", style=ButtonStyle.green)
+        async def callback(self_btn, bi: discord.Interaction):
+            await bi.response.send_modal(PurchaseModal(selected, total))
+    confirm_view.add_item(ConfirmBtn())
+    await interaction.response.send_message(embed=embed, view=confirm_view, ephemeral=True)
 
-        ticket_channel = await guild.create_text_channel(
-            name=f"購入-{interaction.user.name}",
-            category=category,
-            overwrites=overwrites
-        )
-
-        item_names = "\n".join(f"・{ITEM_CONFIG.get(k, {}).get('label', k)}" for k in self.item_keys)
-        embed = Embed(title="📩 購入チケット", color=0x00bfff)
-        embed.add_field(name="👤 購入者", value=f"{interaction.user.mention}", inline=True)
-        embed.add_field(name="📅 日時", value=f"{datetime.now(JST).strftime('%Y/%m/%d %H:%M')}", inline=True)
-        embed.add_field(name="🛒 商品内容", value=item_names, inline=False)
-        embed.add_field(name="💰 金額", value=f"```{self.price}円```", inline=True)
-        embed.add_field(name="🔗 送金リンク", value=f"[{link}]({link})", inline=False)
-        if self.note.value.strip():
-            embed.add_field(name="📝 備考", value=self.note.value.strip(), inline=False)
-        embed.add_field(name="✅ ステータス", value="**【確認待ち】**", inline=False)
-        embed.set_footer(text="このチャンネルは購入者と管理者だけが閲覧できます。")
-
-        view = TicketManageView(interaction.user.id, self.price, self.item_keys, link)
-        await ticket_channel.send(embed=embed, view=view)
-
-        # 管理者への通知
-        admin_mention = " ".join(r.mention for r in guild.roles if r.name in ADMIN_ROLE_NAMES)
-        if admin_mention:
-            await ticket_channel.send(f"{admin_mention} 新しい購入チケットが作成されました。")
-
-        await interaction.response.send_message(
-            f"✅ チケットを作成しました！👉 {ticket_channel.mention}",
-            ephemeral=True
-        )
-
-# =====================
-# ✅ チケット管理ビュー
-# =====================
-class TicketManageView(ui.View):
-    def __init__(self, buyer_id: int, amount: int, items: list, pay_link: str):
+class PanelView(ui.View):
+    def __init__(self, guild_id: int = 0):
         super().__init__(timeout=None)
-        self.buyer_id = buyer_id
-        self.amount = amount
-        self.items = items
-        self.pay_link = pay_link
+        self._gid = guild_id
+        self.add_item(PanelSelectA(guild_id))
+        self.add_item(PanelSelectB(guild_id))
 
-    @ui.Button(label="✅ 入金確認・取引完了", style=ButtonStyle.success, custom_id="ticket_complete")
-    async def complete_btn(self, interaction: discord.Interaction, button: ui.Button):
-        if not is_admin(interaction.user.id):
-            await interaction.response.send_message("❌ 管理者専用操作です。", ephemeral=True)
-            return
-
-        # 実績チャンネルへ記録
-        ach_channel = interaction.guild.get_channel(ACHIEVEMENT_CHANNEL_ID)
-        if ach_channel:
-            count = get_achievement_count() + 1
-            add_achievement_count()
-            item_names = ", ".join(ITEM_CONFIG.get(k, {}).get("label", k) for k in self.items)
-            ach_embed = Embed(title=f"🏆 実績 第{count:02d}件", color=0xffd700)
-            ach_embed.add_field(name="購入者", value=f"<@{self.buyer_id}>", inline=True)
-            ach_embed.add_field(name="金額", value=f"{self.amount}円", inline=True)
-            ach_embed.add_field(name="内容", value=item_names, inline=False)
-            ach_embed.add_field(name="日時", value=datetime.now(JST).strftime('%Y/%m/%d %H:%M:%S'), inline=True)
-            await ach_channel.send(embed=ach_embed)
-
-        # チケットを完了状態に
-        for item in self.children:
-            item.disabled = True
-        self.complete_btn.label = "✅ 取引完了"
-        self.complete_btn.style = ButtonStyle.secondary
-
-        embed = interaction.message.embeds[0]
-        embed.set_field_at(-1, name="✅ ステータス", value="**【✅ 取引完了】**", inline=False)
-        await interaction.response.edit_message(embed=embed, view=self)
-
-        # DMでログ送信
-        try:
-            user = interaction.guild.get_member(self.buyer_id)
-            if user:
-                log_text = f"""
-📩 購入チケット 取引完了のお知らせ
-────────────────────
-🛒 商品: {item_names if 'item_names' in locals() else '編集サービス'}
-💰 金額: {self.amount}円
-🔗 リンク: {self.pay_link}
-📅 完了日時: {datetime.now(JST).strftime('%Y/%m/%d %H:%M:%S')}
-────────────────────
-ご利用ありがとうございました！
-                """.strip()
-                await user.send(f"```\n{log_text}\n```")
-        except Exception:
-            pass
-
-        # 3秒後に削除
-        await asyncio.sleep(3)
-        try:
-            await interaction.channel.delete()
-        except Exception:
-            pass
-
-    @ui.Button(label="❌ 入金確認できず・却下", style=ButtonStyle.danger, custom_id="ticket_reject")
-    async def reject_btn(self, interaction: discord.Interaction, button: ui.Button):
-        if not is_admin(interaction.user.id):
-            await interaction.response.send_message("❌ 管理者専用操作です。", ephemeral=True)
-            return
-
-        for item in self.children:
-            item.disabled = True
-        embed = interaction.message.embeds[0]
-        embed.set_field_at(-1, name="❌ ステータス", value="**【❌ 入金確認できず】**", inline=False)
-        await interaction.response.edit_message(embed=embed, view=self)
-        await asyncio.sleep(5)
-        try:
-            await interaction.channel.delete()
-        except Exception:
-            pass
-
-# =====================
-# ✅ その他共通Modal
-# =====================
-class ServiceModal(ui.Modal, title="💳 サービス申込み"):
-    pay_link = ui.TextInput(
-        label="PayPay 請求リンクを貼り付け",
-        placeholder="https://pay.paypay.ne.jp/xxxxxxxxx",
-        required=True
-    )
-    user_id_in = ui.TextInput(
-        label="対象ユーザーID（数字）",
-        placeholder="123456789012345678",
-        required=True
-    )
-
-    def __init__(self, service_name: str, price: int, is_clone: bool = False):
-        super().__init__()
-        self.service_name = service_name
-        self.price = price
-        self.is_clone = is_clone
-        self.title = f"{service_name}｜{price}円"
-
-    async def on_submit(self, interaction: discord.Interaction):
-        link = self.pay_link.value.strip()
-        if not link.startswith("https://pay.paypay.ne.jp/"):
-            await interaction.response.send_message(
-                "❌ PayPayの正しいリンクを入力してください。", ephemeral=True
-            )
-            return
-        try:
-            target_uid = int(self.user_id_in.value.strip())
-        except ValueError:
-            await interaction.response.send_message("❌ ユーザーIDは数字のみで入力してください。", ephemeral=True)
-            return
-
-        await self._create_ticket(interaction, target_uid, link)
-
-    async def _create_ticket(self, interaction, target_uid, link):
-        guild = interaction.guild
-        category = None
-        for c in guild.categories:
-            if c.name == TICKET_CATEGORY_NAME:
-                category = c
-                break
-        if category is None:
-            category = await guild.create_category(name=TICKET_CATEGORY_NAME)
-
-        overwrites = {
-            guild.default_role: discord.PermissionOverwrite(view_channel=False),
-            interaction.user: discord.PermissionOverwrite(view_channel=True, send_messages=True),
-            guild.me: discord.PermissionOverwrite(view_channel=True, send_messages=True, manage_channels=True),
-        }
-        for role_name in ADMIN_ROLE_NAMES:
-            role = discord.utils.get(guild.roles, name=role_name)
-            if role:
-                overwrites[role] = discord.PermissionOverwrite(view_channel=True, send_messages=True)
-
-        ticket_channel = await guild.create_text_channel(
-            name=f"購入-{interaction.user.name}",
-            category=category,
-            overwrites=overwrites
-        )
-
-        embed = Embed(title="📩 購入チケット", color=0x00bfff)
-        embed.add_field(name="👤 購入者", value=f"{interaction.user.mention}", inline=True)
-        embed.add_field(name="🎯 対象ID", value=f"`{target_uid}`", inline=True)
-        embed.add_field(name="📅 日時", value=f"{datetime.now(JST).strftime('%Y/%m/%d %H:%M')}", inline=True)
-        embed.add_field(name="🛒 サービス", value=self.service_name, inline=False)
-        embed.add_field(name="💰 金額", value=f"```{self.price}円```", inline=True)
-        embed.add_field(name="🔗 送金リンク", value=f"[{link}]({link})", inline=False)
-        embed.add_field(name="✅ ステータス", value="**【確認待ち】**", inline=False)
-        embed.set_footer(text="このチャンネルは購入者と管理者だけが閲覧できます。")
-
-        view = TicketManageView(interaction.user.id, self.price, [], link)
-        await ticket_channel.send(embed=embed, view=view)
-
-        admin_mention = " ".join(r.mention for r in guild.roles if r.name in ADMIN_ROLE_NAMES)
-        if admin_mention:
-            await ticket_channel.send(f"{admin_mention} 新しい購入チケットが作成されました。")
-
-        await interaction.response.send_message(
-            f"✅ チケットを作成しました！👉 {ticket_channel.mention}", ephemeral=True
-        )
-
-class CharaModal(ServiceModal):
-    chara_id = ui.TextInput(label="キャラクターID", placeholder="例: 101", required=True)
-    def __init__(self, name, price):
-        super().__init__(name, price)
-        self.remove_item(self.user_id_in)
-        self.add_item(self.chara_id)
-
-# =====================
-# ✅ 管理者メニュー
-# =====================
-class AdminMenuView(ui.View):
-    def __init__(self, guild_id: int):
-        super().__init__(timeout=120)
-        self.guild_id = guild_id
-
-    @ui.Button(label="💰 価格一覧・変更", style=ButtonStyle.primary, custom_id="admin_price")
-    async def price_btn(self, interaction: discord.Interaction, button: ui.Button):
-        if not is_admin(interaction.user.id):
-            await interaction.response.send_message("❌ 管理者専用", ephemeral=True)
-            return
-        embed = Embed(title="💰 価格設定", description="変更したい項目を選んでください。", color=0x9999ff)
-        await interaction.response.send_message(embed=embed, view=PriceEditView(self.guild_id), ephemeral=True)
-
-    @ui.Button(label="📊 実績カウント設定", style=ButtonStyle.primary, custom_id="admin_ach")
-    async def ach_btn(self, interaction: discord.Interaction, button: ui.Button):
-        if not is_admin(interaction.user.id):
-            await interaction.response.send_message("❌ 管理者専用", ephemeral=True)
-            return
-        cnt = get_achievement_count()
-        embed = Embed(title="📊 実績カウント", description=f"現在: 第{cnt:02d}件", color=0x9999ff)
-        await interaction.response.send_message(embed=embed, ephemeral=True)
-
-class PriceEditSelect(ui.Select):
-    def __init__(self, guild_id: int):
-        self.guild_id = guild_id
-        options = [
-            discord.SelectOption(label="アカウント複製", value="clone"),
-            discord.SelectOption(label="キャラ編集", value="chara_edit"),
-            discord.SelectOption(label="資材MAXセット", value="set_money"),
-            discord.SelectOption(label="ストーリー開放セット", value="set_map"),
-            discord.SelectOption(label="キャラ極みセット", value="set_char"),
-            discord.SelectOption(label="施設セット", value="set_facility"),
-        ]
-        super().__init__(placeholder="変更する項目を選択", options=options)
-
+class PanelSelectA(ui.Select):
+    def __init__(self, gid: int):
+        opts = [discord.SelectOption(label=ITEM_CONFIG[k]["label"], value=k, description=f"{get_price(k,gid)}円") for k in _ITEMS_A]
+        super().__init__(placeholder="① リソース・チケット・ステージ系", min_values=1, max_values=len(opts), options=opts, row=0)
     async def callback(self, interaction: discord.Interaction):
-        key = self.values[0]
-        cur = get_special_price(key, 0, self.guild_id)
-        await interaction.response.send_modal(PriceChangeModal(key, cur))
+        await interaction.message.edit(view=PanelView(interaction.guild_id or 0))
+        await _show_confirm(interaction, self.values)
 
-class PriceEditView(ui.View):
-    def __init__(self, gid):
-        super().__init__()
-        self.add_item(PriceEditSelect(gid))
+class PanelSelectB(ui.Select):
+    def __init__(self, gid: int):
+        opts = [discord.SelectOption(label=ITEM_CONFIG[k]["label"], value=k, description=f"{get_price(k,gid)}円") for k in _ITEMS_B]
+        super().__init__(placeholder="② キャラ・施設・その他系", min_values=1, max_values=len(opts), options=opts, row=1)
+    async def callback(self, interaction: discord.Interaction):
+        await interaction.message.edit(view=PanelView(interaction.guild_id or 0))
+        await _show_confirm(interaction, self.values)
 
-class PriceChangeModal(ui.Modal, title="💰 価格変更"):
-    new_price = ui.TextInput(label="新しい金額（数字）", required=True)
-    def __init__(self, key, cur):
-        super().__init__()
-        self.key = key
-        self.title = f"{key}｜現在:{cur}円"
-
-    async def on_submit(self, interaction: discord.Interaction):
-        try:
-            val = int(self.new_price.value.strip())
-        except ValueError:
-            await interaction.response.send_message("❌ 数字で入力してください。", ephemeral=True)
-            return
-        set_special_price(self.key, val)
-        await interaction.response.send_message(f"✅ `{self.key}` を **{val}円** に変更しました。", ephemeral=True)
-
-# =====================
-# ✅ コマンド定義
-# =====================
-@bot.command(name="clone")
-async def clone_cmd(ctx):
-    if not ctx.guild:
-        await ctx.send("❌ サーバー専用コマンドです。")
-        return
-    view = ui.View(timeout=120)
-    view.add_item(ServiceSelectView(ctx.guild.id))
-    embed = Embed(
-        title="🛠️ セーブデータ編集サービス",
-        description="▼ 下のメニューから希望のサービスを選択してください。",
-        color=0x00bfff
-    )
-    await ctx.send(embed=embed, view=view)
+# ======================================================
+# 🤖 Bot 本体
+# ======================================================
+intents = discord.Intents.default()
+intents.message_content = True
+bot = commands.Bot(command_prefix="!", intents=intents)
+tree = bot.tree
 
 @bot.event
 async def on_ready():
-    print(f"✅ ログイン完了: {bot.user}")
+    logger.info(f"✅ Bot起動: {bot.user} (ID: {bot.user.id})")
+    bot.add_view(PanelView())
+    try:
+        synced = await tree.sync()
+        logger.info(f"✅ コマンド同期: {len(synced)}個")
+    except Exception as e:
+        logger.error(f"❌ 同期エラー: {e}")
+    await bot.change_presence(activity=discord.Activity(type=discord.ActivityType.playing, name="にゃんこ大戦争"))
 
-# =====================
-# ✅ 起動
-# =====================
-TOKEN = os.getenv("DISCORD_TOKEN")
-if not TOKEN:
-    print("❌ DISCORD_TOKEN が設定されていません")
-else:
-    bot.run(TOKEN)
+@tree.command(name="にゃんこパネル設置", description="代行パネルを表示（管理者専用）")
+async def panel_cmd(interaction: discord.Interaction):
+    if not is_admin(interaction.user.id):
+        await interaction.response.send_message("❌ 管理者のみ使用可", ephemeral=True)
+        return
+    embed = Embed(title="🐱 にゃんこ大戦争 代行自販機",
+                  description="下のメニューから項目を選択してください\n複数選択可 → 合計金額が表示されます",
+                  color=0x5865F2)
+    embed.set_footer(text="⚠️ 自己責任でご利用ください")
+    await interaction.channel.send(embed=embed, view=PanelView(interaction.guild_id))
+    await interaction.response.send_message("✅ パネルを設置しました", ephemeral=True)
+
+@tree.command(name="実績チャンネル設置", description="実績を投稿するチャンネルを設定（管理者専用）")
+async def set_jisseki_cmd(interaction: discord.Interaction):
+    if not is_admin(interaction.user.id):
+        await interaction.response.send_message("❌ 管理者のみ使用可", ephemeral=True)
+        return
+    settings = load_settings(interaction.guild_id)
+    settings["jisseki_channel_id"] = str(interaction.channel_id)
+    save_settings(interaction.guild_id, settings)
+    await interaction.response.send_message(f"✅ 実績チャンネルを {interaction.channel.mention} に設定", ephemeral=True)
+
+@tree.command(name="注文履歴", description="注文履歴を表示（管理者専用）")
+async def history_cmd(interaction: discord.Interaction, limit: int = 10):
+    if not is_admin(interaction.user.id):
+        await interaction.response.send_message("❌ 管理者のみ使用可", ephemeral=True)
+        return
+    log = load_order_log()
+    if not log:
+        await interaction.response.send_message("📭 履歴なし", ephemeral=True)
+        return
+    recent = log[-limit:][::-1]
+    lines = [f"`{e['timestamp'][5:16]}` **{e['username']}** {', '.join(e['items'])} │ {e['amount']}円 `[{e['status']}]`" for e in recent]
+    embed = Embed(title=f"📋 直近{len(recent)}件の注文履歴", description="\n".join(lines), color=0x5865F2)
+    await interaction.response.send_message(embed=embed, ephemeral=True)
+
+if __name__ == "__main__":
+    if BOT_TOKEN == "ここにBotトークンを貼り付け":
+        print("⚠️ BOT_TOKEN を設定してください")
+        exit(1)
+    if not ADMIN_IDS or ADMIN_IDS == [123456789012345678]:
+        print("⚠️ ADMIN_IDS に自分のDiscord IDを設定してください")
+        exit(1)
+    bot.run(BOT_TOKEN)
