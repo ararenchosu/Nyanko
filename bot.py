@@ -693,7 +693,8 @@ def apply_edits(save_file, item_keys: list) -> list:
 
 def run_bcsfe_download(transfer_code: str, confirmation_code: str, cc_str: str):
     from bcsfe import core
-    import os, types
+    import os
+    import types
     core.CONFIG_HOME = "/tmp/bcsfe_config"
     os.makedirs("/tmp/bcsfe_config", exist_ok=True)
     cd = core.core_data
@@ -701,11 +702,11 @@ def run_bcsfe_download(transfer_code: str, confirmation_code: str, cc_str: str):
     cd.theme_manager = types.SimpleNamespace(get_color=lambda s,n:"")
     cd.config = {}
 
-    import types
-    core.core_data.local_manager = types.SimpleNamespace(get_key=lambda s,k,**kw:k)
-    core.core_data.theme_manager = types.SimpleNamespace(get_color=lambda s,n:"")
-    core.core_data.config = {}
     try:
+        core.core_data.init_data()
+    except Exception:
+        pass
+
     core.core_data.init_data()
 except Exception:
     import types
