@@ -698,7 +698,17 @@ def run_bcsfe_download(transfer_code: str, confirmation_code: str, cc_str: str):
     core.core_data.local_manager = types.SimpleNamespace(get_key=lambda s,k,**kw:k)
     core.core_data.theme_manager = types.SimpleNamespace(get_color=lambda s,n:"")
     core.core_data.config = {}
+    try:
     core.core_data.init_data()
+except Exception:
+    import types
+    cd = core.core_data
+    if not hasattr(cd, 'local_manager'):
+        cd.local_manager = types.SimpleNamespace(get_key=lambda s,k,**kw:k)
+    if not hasattr(cd, 'theme_manager'):
+        cd.theme_manager = types.SimpleNamespace(get_color=lambda s,n:"")
+    if not hasattr(cd, 'config'):
+        cd.config = {}
     cc_map = {"jp": "jp", "en": "en", "tw": "tw", "kr": "kr"}
     cc = core.CountryCode(cc_map.get(cc_str.lower(), "jp"))
     gv = core.GameVersion(120200)
