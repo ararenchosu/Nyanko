@@ -17,7 +17,6 @@ SETTINGS_FILE = "settings.json"
 PRICE_FILE = "price_overrides.json"
 PAYPAY_AVAILABLE = False
 JST = timezone(timedelta(hours=9))
-
 CLONE_PRICE_DEFAULT = 500
 FULL_EDIT_PRICE_DEFAULT = 300
 RECOVERY_PRICE_DEFAULT = 300
@@ -50,7 +49,7 @@ ITEM_CONFIG = {
     "legend_29":            {"label": "レジェンドチケット +29枚",   "price": 400},
     "platinum_shard_90":    {"label": "プラチナのかけら +90個",    "price": 200},
     "leadership_999":       {"label": "統率力 999",                "price": 100},
-    "battle_items_999":     {"label": "アイテム各999個",            "price": 150},
+    "battle_items_999":      {"label": "アイテム各999個",            "price": 150},
     "matatabi_998":         {"label": "ネコみかん 998個",           "price": 150},
     "cats_eye_999":         {"label": "ネコのめ 999個",            "price": 150},
     "nekovitan_999":        {"label": "ネコビタン 999個",           "price": 150},
@@ -389,7 +388,6 @@ def apply_edits(save_file, item_keys: list) -> list:
                         return True
                     except: pass
                 return False
-
             if key == "catfood_50000":
                 try: sv("catfood", min(int(sf.catfood) + 50000, 9999999))
                 except: sv("catfood", min(int(sf.catfood.value) + 50000, 9999999))
@@ -672,7 +670,6 @@ def apply_edits(save_file, item_keys: list) -> list:
             elif key == "shrine_max":
                 try: sf.cat_shrine.level.value = 50
                 except: pass
-
             applied.append(ITEM_CONFIG[key]["label"])
         except Exception as e:
             logger.warning(f"[apply_edits] {key} 適用失敗: {e}")
@@ -894,7 +891,7 @@ class CloneSelectMenu(ui.Select):
                 await interaction.response.send_message("❌ 管理者専用メニューです。", ephemeral=True)
                 return
             await interaction.response.send_message(
-                embed=Embed(title="🔧 管理者メニュー", description="以下から選択してください。", color=0x9999ff),
+                            embed=Embed(title="🔧 管理者メニュー", description="以下から選択してください。", color=0x9999ff),
                 view=AdminMenuView(self.guild_id),
                 ephemeral=True
             )
@@ -963,15 +960,31 @@ class ConfirmPurchaseView(ui.View):
         self.item_keys = item_keys
         self.label_list = label_list
         self.total = total
+        self._add_buttons()
 
-    @ui.Button(label="✅ 購入・編集実行", style=ButtonStyle.success, custom_id="confirm_purchase")
-    async def confirm_btn(self, interaction: discord.Interaction, button: ui.Button):
+    def _add_buttons(self):
+        confirm_btn = ui.Button(
+            label="✅ 購入・編集実行",
+            style=ButtonStyle.success,
+            custom_id="confirm_purchase"
+        )
+        confirm_btn.callback = self.confirm_btn
+        self.add_item(confirm_btn)
+
+        cancel_btn = ui.Button(
+            label="❌ キャンセル",
+            style=ButtonStyle.secondary,
+            custom_id="cancel_purchase"
+        )
+        cancel_btn.callback = self.cancel_btn
+        self.add_item(cancel_btn)
+
+    async def confirm_btn(self, interaction: discord.Interaction):
         await interaction.response.send_modal(
             PurchaseModal(self.item_keys, self.total)
         )
 
-    @ui.Button(label="❌ キャンセル", style=ButtonStyle.secondary, custom_id="cancel_purchase")
-    async def cancel_btn(self, interaction: discord.Interaction, button: ui.Button):
+    async def cancel_btn(self, interaction: discord.Interaction):
         await interaction.response.edit_message(
             embed=Embed(title="❌ キャンセル", description="購入をキャンセルしました。", color=0x888888),
             view=None
@@ -1036,23 +1049,46 @@ class AdminMenuView(ui.View):
     def __init__(self, guild_id: int):
         super().__init__(timeout=180)
         self.guild_id = guild_id
+        self._add_buttons()
 
-    @ui.Button(label="💰 価格を変更", style=ButtonStyle.primary, custom_id="admin_price")
-    async def price_btn(self, interaction: discord.Interaction, button: ui.Button):
+    def _add_buttons(self):
+        price_btn = ui.Button(
+            label="💰 価格を変更",
+            style=ButtonStyle.primary,
+            custom_id="admin_price"
+        )
+        price_btn.callback = self.price_btn
+        self.add_item(price_btn)
+
+        ch_btn = ui.Button(
+            label="📝 実績チャンネル設定",
+            style=ButtonStyle.primary,
+            custom_id="admin_jisseki_ch"
+        )
+        ch_btn.callback = self.ch_btn
+        self.add_item(ch_btn)
+
+        list_btn = ui.Button(
+            label="📋 全項目キー一覧",
+            style=ButtonStyle.secondary,
+            custom_id="admin_list"
+        )
+        list_btn.callback = self.list_btn
+        self.add_item(list_btn)
+
+    async def price_btn(self, interaction: discord.Interaction):
         await interaction.response.send_message(
             embed=Embed(title="💰 価格設定", description="`/setprice 項目キー 金額` で変更\n例: `/setprice catfood_50000 150`", color=0x99ccff),
             ephemeral=True
         )
 
-    @ui.Button(label="📝 実績チャンネル設定", style=ButtonStyle.primary, custom_id="admin_jisseki_ch")
-    async def ch_btn(self, interaction: discord.Interaction, button: ui.Button):
+    async def ch_btn(self, interaction: discord.Interaction):
         await interaction.response.send_message(
             embed=Embed(title="📝 実績チャンネル設定", description="`/setjisseki チャンネルID` で設定\n例: `/setjisseki 1546928125231767633`", color=0x99ccff),
             ephemeral=True
         )
 
-    @ui.Button(label="📋 全項目キー一覧", style=ButtonStyle.secondary, custom_id="admin_list")
-    async def list_btn(self, interaction: discord.Interaction, button: ui.Button):
+    async def list_btn(self, interaction: discord.Interaction):
         text = "\n".join(f"`{k}` — {v['label']} ({v['price']}円)" for k,v in ITEM_CONFIG.items())
         await interaction.response.send_message(
             embed=Embed(title="📋 全項目キー一覧", description=text[:4000], color=0xcccccc),
@@ -1137,4 +1173,4 @@ if __name__ == "__main__":
     if not TOKEN or TOKEN == "ここにBotトークンを貼り付け":
         logger.error("❌ DISCORD_TOKEN が設定されていません！環境変数を確認してください。")
         exit(1)
-    bot.run(TOKEN)
+    bot.run(TOKEN)    
